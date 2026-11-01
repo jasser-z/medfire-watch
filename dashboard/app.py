@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+from pathlib import Path
 
 import requests
 import streamlit as st
@@ -12,6 +13,7 @@ from dashboard.world_map import render_world_map
 
 API_BASE_URL = os.environ.get("MEDFIRE_API_URL", "http://127.0.0.1:8000").rstrip("/")
 PUBLIC_API_URL = os.environ.get("MEDFIRE_PUBLIC_API_URL", API_BASE_URL).rstrip("/")
+SHOWCASE_ALERT = os.environ.get("MEDFIRE_SHOWCASE_ALERT") == "1"
 
 st.set_page_config(page_title="MedFire Watch", layout="wide")
 st.markdown(
@@ -99,6 +101,7 @@ with pages[2]:
         if st.button(
             "Delete all",
             key="delete_camera_history",
+            disabled=SHOWCASE_ALERT,
             help="Clear local history and saved snapshots; Telegram messages remain.",
         ):
             cleared = api_request("DELETE", "/alerts/history")
@@ -109,7 +112,7 @@ with pages[2]:
                     st.success("Local snapshot history cleared.")
     st.write("Track the snapshots sent by the live camera, including delivery failures.")
     status = api_request("GET", "/alerts")
-    if status and not status.get("configured"):
+    if status and not status.get("configured") and not SHOWCASE_ALERT:
         st.info("Open your Telegram bot, press Start, then connect your chat here.")
         if st.button("Connect Telegram chat"):
             connected = api_request("POST", "/telegram/detect")
@@ -118,6 +121,18 @@ with pages[2]:
 
     @st.fragment(run_every=3)
     def camera_history():
+        if SHOWCASE_ALERT:
+            with st.container(border=True):
+                photo, details = st.columns([1, 1.5], gap="large")
+                with photo:
+                    st.image(Path(__file__).parents[1] / "docs/screenshots/telegram-alert.png", width=403)
+                with details:
+                    st.markdown("### Recorded Telegram photo alert")
+                    st.write("27 October 2026 · 23:42:04 UTC+01:00")
+                    st.metric("Smoke confidence", "73%")
+                    st.write("Fire and smoke boxes accompany the camera snapshot in Telegram.")
+                    st.caption("Historical example · Telegram screenshot supplied by the author.")
+            return
         result = api_request("GET", "/alerts/log")
         messages = result.get("messages", []) if result else []
         if not messages:

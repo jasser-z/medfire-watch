@@ -41,13 +41,11 @@ Sources : [métriques](docs/results/detection_final_metrics.json),
 | ![Carte](docs/screenshots/fire-danger.png) | ![Inspection](docs/screenshots/image-inspector.png) |
 | ![Observations NASA réelles](docs/screenshots/satellite-detections.png) | ![Studio vidéo](docs/screenshots/video-studio.png) |
 | ![Tunis en 3D](docs/screenshots/map-tunis.png) | ![Marseille en 3D](docs/screenshots/map-marseille.png) |
-| ![Détection par caméra simulée](docs/screenshots/live-camera.png) | ![Configuration des alertes](docs/screenshots/alerts.png) |
+| ![Détection par caméra simulée](docs/screenshots/live-camera.png) | ![Alerte Telegram enregistrée](docs/screenshots/alerts.png) |
 
 Les points satellite sont des observations NASA réelles. Les gros plans urbains présentent la cartographie et les bâtiments 3D.
 
-![Alerte photo Telegram fournie par l'auteur](docs/screenshots/telegram-alert.png)
-
-Alerte photo Telegram fournie par l'auteur, capturée le 27 octobre 2026.
+La présentation des alertes inclut la photo Telegram fournie par l'auteur, datée du 27 octobre 2026.
 
 [Sources des médias](docs/media/CREDITS.md)
 

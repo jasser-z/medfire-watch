@@ -5,8 +5,9 @@
 NASA Goddard Space Flight Center / Grace Weikert, FireSense prescribed-burn footage,
 Fishlake National Forest, Utah, October 2023. The NASA library record identifies NASA GSFC
 as the source and Grace Weikert as photographer; no third-party copyright is listed.
-The selected segment is 118–130 seconds of the source, showing aerial fire and smoke
-without faces. Source audio is omitted. Frames, boxes and UI captures are derived displays.
+Video playback uses seconds 118–130 (aerial flames). The simulated camera uses seconds
+69–77 (forest-edge fire), and image inspection uses a frame at second 99 (distant smoke).
+These scenes have no faces. Source audio is omitted. Boxes are actual detector output.
 
 [NASA library record][nasa] · [NASA media guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/)
 
@@ -34,10 +35,15 @@ Install the development requirements, then `python -m pip install playwright` an
 python scripts/capture_media.py --video path/to/cleared-fire-clip.mp4
 ```
 
+Use `--camera-video` and `--image-video` with separate license-cleared scenes to avoid
+repeating one frame across different features.
+
 The script uses 1440×900 headless Chromium, separate local service ports, isolated alert
 history, empty Telegram credentials and Chromium's fake-video-capture flag. It captures
-real detector outputs. The Alerts view shows connection setup with an empty isolated history;
-it does not claim a successful Telegram delivery. Camera screenshots precede delivery attempts.
+real detector outputs. `MEDFIRE_SHOWCASE_ALERT=1` is set only in capture subprocesses to show
+the author's supplied historical Telegram screenshot in a labelled, read-only card.
+It does not insert delivery records, send messages or alter the actual user's alert history.
+Normal application launches show actual delivery history. Camera screenshots precede delivery attempts.
 Streamlit's supported `client.toolbarMode` and `ui.hideTopBar` settings hide toolbar controls.
 Both GIFs derive from 20-second Playwright recordings, without source audio.
 The map recording uses a capture-only JavaScript export to control the existing MapLibre camera;
@@ -51,14 +57,15 @@ All eight PNG captures are 1440×900: `fire-danger.png`, `satellite-detections.p
 `map-marseille.png`, `image-inspector.png`, `video-studio.png`, `live-camera.png` and `alerts.png` under
 `docs/screenshots/`. The camera uses a recorded stream, not a physical camera.
 `demo.gif` shows live prediction; `earth-zoom.gif` shows the globe-to-Marseille approach and a 3D orbit.
-Each is 20 seconds at 6 fps, below 8 MB. The encoder chooses 640, 560 or 480 pixels
-in width to meet the size limit while preserving the full browser viewport's aspect ratio.
+Each is 20 seconds and below 8 MB. Encoding uses 256 colours without dithering, transparent
+delta frames or offset subframes, preventing patterned trails and incomplete-frame artifacts.
+Resolution and frame rate adapt to the size limit while preserving viewport aspect ratio.
 The capture source uses NASA's medium-resolution rendition. Annotations are actual model predictions.
 
 | GIF | Dimensions | Duration | Bytes |
 | --- | --- | --- | --- |
-| `demo.gif` | 640×400 | 20 seconds | 6,989,315 |
-| `earth-zoom.gif` | 480×300 | 20 seconds | 7,234,775 |
+| `demo.gif` | 560×350, 4 fps | 20 seconds | 4,458,365 |
+| `earth-zoom.gif` | 480×300, 4 fps | 20 seconds | 7,405,101 |
 
 ## Author contribution
 

@@ -78,7 +78,7 @@ def open_credits(page: Any) -> None:
 
 def encode_gif(ffmpeg: str, video: Path, target: Path, duration: int = 20) -> None:
     """Encode the final recording interval as a compact, looping GIF."""
-    for width, colours in [(640, 80), (560, 64), (480, 64)]:
+    for width, fps in [(640, 6), (560, 4), (480, 4), (480, 3)]:
         subprocess.run(
             [
                 ffmpeg,
@@ -90,8 +90,10 @@ def encode_gif(ffmpeg: str, video: Path, target: Path, duration: int = 20) -> No
                 "-t",
                 str(duration),
                 "-filter_complex",
-                f"fps=6,scale={width}:-1:flags=lanczos,split[a][b];"
-                f"[a]palettegen=max_colors={colours}[p];[b][p]paletteuse",
+                f"fps={fps},scale={width}:-1:flags=lanczos,split[a][b];"
+                "[a]palettegen=max_colors=256:reserve_transparent=0[p];[b][p]paletteuse=dither=none",
+                "-gifflags",
+                "-offsetting-transdiff",
                 "-loop",
                 "0",
                 str(target),
@@ -189,17 +191,16 @@ def capture_maps(context: Any, api: str, output: Path, work: Path, ffmpeg: str) 
 
 
 def capture_detection(context: Any, api: str, ui: str, output: Path, clip: Path, image: Path, ffmpeg: str) -> None:
-    """Capture empty alert setup and actual detector overlays without manufacturing delivery success."""
+    """Capture an attributed historical alert and distinct real detector overlays."""
     page = context.new_page()
     page.goto(ui)
     page.get_by_role("tab", name="Alerts", exact=True).click()
-    page.get_by_text("No live-camera snapshot attempts have been recorded yet.", exact=True).wait_for()
-    page.get_by_role("button", name="Connect Telegram chat", exact=True).wait_for()
+    page.get_by_text("Recorded Telegram photo alert", exact=True).wait_for()
     page.get_by_role("button", name="Delete all", exact=True).wait_for()
     page.wait_for_timeout(2000)
     assert page.get_by_text("Delivery failed; check configuration and network", exact=True).count() == 0
     page.screenshot(path=str(output / "alerts.png"))
-    print("Captured clean alert setup, no simulated delivery records", flush=True)
+    print("Captured author-provided historical Telegram alert; actual history untouched", flush=True)
     page.get_by_role("tab", name="Test", exact=True).click()
     page.get_by_role("tab", name="Image inspector", exact=True).click()
     page.locator('input[type="file"]').first.set_input_files(str(image))
@@ -243,6 +244,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--video", required=True, type=Path, help="License-cleared fire clip without faces.")
     parser.add_argument("--section", choices=["all", "map", "detection"], default="all")
+    parser.add_argument("--camera-video", type=Path, help="A separate cleared clip for the simulated camera.")
+    parser.add_argument("--image-video", type=Path, help="A separate cleared scene for image inspection.")
     parser.add_argument("--api-port", type=int, default=18000)
     parser.add_argument("--dashboard-port", type=int, default=18501)
     args = parser.parse_args()
@@ -259,11 +262,21 @@ def main() -> None:
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     fake, image = work / "fake-camera.y4m", work / "fire-frame.png"
     subprocess.run(
-        [ffmpeg, "-y", "-i", str(clip), "-vf", "scale=640:360,fps=15", "-pix_fmt", "yuv420p", str(fake)],
+        [
+            ffmpeg,
+            "-y",
+            "-i",
+            str((args.camera_video or clip).resolve()),
+            "-vf",
+            "scale=640:360,fps=15",
+            "-pix_fmt",
+            "yuv420p",
+            str(fake),
+        ],
         check=True,
         capture_output=True,
     )
-    reader = cv2.VideoCapture(str(clip))
+    reader = cv2.VideoCapture(str((args.image_video or clip).resolve()))
     ok, frame = reader.read()
     reader.release()
     if not ok:
@@ -272,6 +285,7 @@ def main() -> None:
     api, ui = f"http://127.0.0.1:{args.api_port}", f"http://127.0.0.1:{args.dashboard_port}"
     env = {**os.environ, "TELEGRAM_BOT_TOKEN": "", "TELEGRAM_CHAT_ID": "", "MEDFIRE_API_URL": api}
     env["MEDFIRE_PUBLIC_API_URL"] = api
+    env["MEDFIRE_SHOWCASE_ALERT"] = "1"
     # An isolated empty history shows connection setup, never fabricated success or intentional failure cards.
     relative = isolated.relative_to(ROOT).as_posix() + "/state.json"
     bootstrap = (
