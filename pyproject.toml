@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "medfire-watch"
+version = "0.1.0"
+description = "Satellite weather map and camera fire/smoke detection"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+authors = [{ name = "AI & Data Science engineering student" }]
+license = { text = "MIT" }
+dependencies = [
+  "python-dotenv>=1.0.1",
+  "tzdata>=2024.1",
+  "pyyaml>=6.0.2",
+  "pandas>=2.2.3",
+  "numpy>=1.26.0",
+  "requests>=2.32.0",
+  "fastapi>=0.115.0",
+  "uvicorn>=0.30.0",
+  "streamlit>=1.38.0",
+  "python-multipart>=0.0.9",
+  "ultralytics>=8.3.0,<9",
+  "psutil>=6.0.0",
+  "imageio-ffmpeg>=0.5.1",
+  "pillow>=10",
+  "opencv-python>=4.8",
+  "shapely>=2.0,<3",
+  "pyshp>=2.3,<3",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[project.optional-dependencies]
+dev = ["httpx>=0.27.0", "pytest>=8.3.0", "ruff>=0.6.0"]
+training = ["mlflow>=2.16.1", "datasets>=2.20.0"]
+
+[tool.ruff]
+line-length = 140
+src = ["models", "api", "dashboard", "alerts", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

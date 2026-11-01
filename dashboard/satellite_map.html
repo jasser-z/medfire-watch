@@ -1,0 +1,135 @@
+<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>MedFire Earth Watch</title><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.css"><style>
+
+:root{color-scheme:dark}*{box-sizing:border-box}html,body,#map{height:100%;margin:0;background:#071523;color:#edf5fa;font:14px system-ui}.hud{position:absolute;top:16px;left:16px;z-index:2;width:min(370px,calc(100% - 80px));max-height:85vh;overflow:auto;background:#071523ed;backdrop-filter:blur(16px);border:1px solid #7896aa66;border-radius:16px;padding:18px;box-shadow:0 12px 40px #0006}h1{font-size:18px;letter-spacing:.12em;color:#ffbd89;margin:0 0 8px}small{display:block;color:#b0c9d8;margin:8px 0;line-height:1.5}input[type=search]{width:100%;padding:10px;border-radius:8px;border:1px solid #7896aa66;background:#102535;color:white}button{background:#18374a;color:#edf5fa;border:1px solid #7896aa55;border-radius:7px;padding:8px;cursor:pointer;margin:3px 2px}button:hover,button.selected{background:#385a6d}button:focus-visible,input:focus-visible{outline:2px solid #ffbd89}#results button{display:block;width:100%;text-align:left}#layer-menu label{display:block;margin:8px 0}#layer-menu>div>strong{display:block;margin-top:12px}.hud small{font-size:12px;margin:5px 0;line-height:1.4}details{margin-top:10px}summary{cursor:pointer;padding:6px}#error{position:absolute;bottom:40px;left:16px;right:65px;z-index:4;background:#852e27ee;padding:12px;border-radius:8px}#debug{position:absolute;bottom:85px;right:60px;z-index:3;pointer-events:none;background:#061522e8;padding:10px;font:11px monospace}.maplibregl-popup-content{background:#0c2030;color:white;padding:14px;border-radius:10px;max-width:300px}.maplibregl-popup-close-button{color:white}@media(max-width:600px){.hud{padding:12px;max-height:55vh}h1{font-size:15px}}
+
+.maplibregl-ctrl-attrib.maplibregl-compact-show{max-width:min(360px,calc(100vw - 40px));font-size:11px;line-height:1.5;border-radius:10px}
+
+.controls-drawer{position:absolute;top:16px;left:16px;z-index:2;width:min(370px,calc(100% - 80px));margin:0}
+
+.controls-drawer>summary{display:inline-flex;align-items:center;gap:8px;list-style:none;padding:10px 14px;border:1px solid #7896aa66;border-radius:12px;background:#071523ed;box-shadow:0 6px 20px #0004;cursor:pointer;user-select:none}
+
+.controls-drawer>summary::-webkit-details-marker{display:none}
+
+.controls-drawer>summary:hover{background:#18374a}
+
+.controls-drawer>summary:focus-visible{outline:2px solid #ffbd89;outline-offset:3px}
+
+.controls-drawer .hide-controls{display:none}
+
+.controls-drawer[open] .show-controls{display:none}
+
+.controls-drawer[open] .hide-controls{display:inline}
+
+#map-controls .hud{top:52px;left:0;width:100%;max-height:min(75dvh,calc(100dvh - 100px))}
+
+.controls-drawer[open] .hud{animation:controls-in .18s ease-out}
+
+@keyframes controls-in{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+
+@media(prefers-reduced-motion:reduce){.controls-drawer[open] .hud{animation:none}}
+
+.map-toolbar{position:absolute;top:16px;left:16px;right:16px;z-index:3;display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;pointer-events:none}
+
+.map-toolbar>details{position:static;width:auto;pointer-events:auto;margin:0}
+
+.map-toolbar summary{min-height:42px}
+
+#map-controls .hud{left:0;width:min(370px,calc(100vw - 32px));top:52px}
+
+.fire-guide>summary{display:inline-flex;align-items:center;gap:8px;list-style:none;padding:10px 14px;border:1px solid #7896aa66;border-radius:12px;background:#071523ed;box-shadow:0 6px 20px #0004;user-select:none}
+
+.fire-guide>summary::-webkit-details-marker{display:none}
+
+.fire-guide>summary:hover{background:#18374a}
+
+.fire-guide>summary:focus-visible{outline:2px solid #ffbd89;outline-offset:3px}
+
+.fire-guide .guide-close{display:none}.fire-guide[open] .guide-open{display:none}.fire-guide[open] .guide-close{display:inline}
+
+.guide-panel{position:absolute;top:52px;left:0;width:min(470px,calc(100vw - 32px));max-height:calc(100dvh - 100px);overflow:auto;overscroll-behavior:contain;background:#071523f5;backdrop-filter:blur(16px);border:1px solid #7896aa66;border-radius:16px;padding:20px;box-shadow:0 12px 40px #0006;line-height:1.55}
+
+.guide-panel h2{font-size:20px;color:#ffbd89;margin:0 0 8px}.guide-panel h3{font-size:15px;margin:0 0 5px}.guide-panel p{margin:0 0 10px;color:#c7dce7}.guide-panel ol{padding-left:23px;margin:16px 0}.guide-panel li{padding:0 0 12px 5px}.guide-panel li::marker{color:#ffbd89;font-weight:700}
+
+.guide-panel .drone-note{border-left:3px solid #ffbd89;padding:12px 14px;background:#102535;border-radius:0 10px 10px 0}.guide-panel .drone-note p:last-child{margin:0}.guide-panel a{color:#9ed8e5;text-underline-offset:3px}.guide-panel a:focus-visible{outline:2px solid #ffbd89;outline-offset:3px}.guide-panel footer{font-size:12px;color:#b0c9d8;margin-top:16px}
+
+.layer-group+.layer-group{border-top:1px solid #7896aa33;margin-top:14px;padding-top:8px}
+
+#satellite-hours{display:block;width:100%;padding:9px;margin:6px 0;border:1px solid #7896aa66;border-radius:8px;background:#102535;color:#edf5fa}
+
+#observations{display:block;margin:6px 0;font-size:14px}
+
+@media(max-width:400px){.map-toolbar{gap:6px}.map-toolbar>details>summary{font-size:12px;padding:10px}.guide-panel{padding:16px}}
+
+</style></head><body>
+
+<div id="map" aria-label="Interactive worldwide fire observations"></div>
+
+<nav class="map-toolbar" aria-label="Map tools">
+
+<details id="map-controls" class="controls-drawer" name="map-tools">
+
+<summary aria-controls="map-panel"><span aria-hidden="true">&#9776;</span> <span class="show-controls">Controls</span><span class="hide-controls">Hide controls</span></summary>
+
+<section id="map-panel" class="hud">
+
+<h1>MEDFIRE · EARTH WATCH</h1>
+
+<input id="place" type="search" placeholder="Country, region, city…" aria-label="Search place" autocomplete="off">
+
+<div id="results"></div>
+
+<div id="layer-menu">
+
+<div id="satellite-layer" class="layer-group" role="group" aria-labelledby="satellite-label">
+
+<label id="satellite-label"><input id="observed" type="checkbox" aria-describedby="satellite-note observations updated"> Satellite heat detections</label>
+
+<label for="satellite-hours">Show detections from</label>
+
+<select id="satellite-hours" aria-describedby="satellite-empty"><option value="1">Last hour · most recent</option><option value="3">Last 3 hours</option><option value="6">Last 6 hours</option><option value="12">Last 12 hours</option><option value="24" selected>Last 24 hours</option></select>
+
+<small id="satellite-empty" hidden>No detections in this time window. Satellites can miss fires.</small>
+
+<small id="satellite-note">Heat detections are unconfirmed.</small>
+
+<b id="observations">Loading observations…</b>
+
+<small id="updated"></small>
+<small id="satellite-status" role="status" aria-live="polite"></small>
+
+</div>
+
+</div>
+
+</section>
+
+</details>
+
+<details id="fire-guide" class="fire-guide" name="map-tools">
+
+<summary aria-controls="fire-guide-panel"><span aria-hidden="true">&#9432;</span> <span class="guide-open">Map guide</span><span class="guide-close">Close guide</span></summary>
+
+<section id="fire-guide-panel" class="guide-panel" aria-labelledby="fire-guide-title">
+
+<h2 id="fire-guide-title">Map guide</h2>
+
+<p>Use Controls to turn each layer on or off.</p>
+
+<ol>
+
+<li><h3>Understand the weather colours</h3><p>They show conditions favourable to fire and its spread. A high danger level does not mean a fire is burning. Uncoloured areas may have no data. Right-click a place on the map to see its current weather.</p></li>
+
+<li><h3>Satellite heat detections · selected time window</h3><p>These VIIRS points show observed heat. Choose the last hour, 3, 6, 12 or 24 hours in Controls; the default is 24 hours. Short windows may be empty because satellites do not observe continuously. Zoom in and click a point for its time and location. Numbered circles group observations, not confirmed fires. Heat can also come from industry or other sources. Satellites can miss fires.</p></li>
+
+</ol>
+
+<div class="drone-note"><h3>Drone camera · planned deployment</h3><p>The intended setup connects a drone's live camera feed to <strong>Live camera</strong>. MedFire analyses the images for fire and smoke and sends a snapshot to Telegram when an alert triggers, so an operator can review it.</p><p>The PC webcam currently stands in for the drone during testing. Connecting and validating the drone feed is the next integration step. Drone flights must be authorised and coordinated with the response team.</p></div>
+
+</section>
+
+</details>
+
+</nav>
+
+<div id="error" hidden role="status"></div><pre id="debug" hidden></pre><script type="module" src="/world-map/app.mjs"></script></body></html>
+

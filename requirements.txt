@@ -1,0 +1,17 @@
+python-dotenv>=1.0.1
+tzdata>=2024.1
+pyyaml>=6.0.2
+pandas>=2.2.3
+numpy>=1.26.0
+requests>=2.32.0
+fastapi>=0.115.0
+uvicorn>=0.30.0
+streamlit>=1.38.0
+python-multipart>=0.0.9
+ultralytics>=8.3.0,<9
+psutil>=6.0.0
+imageio-ffmpeg>=0.5.1
+pillow>=10
+opencv-python>=4.8
+shapely>=2.0,<3
+pyshp>=2.3,<3

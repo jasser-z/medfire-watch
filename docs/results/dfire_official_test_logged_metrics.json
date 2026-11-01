@@ -1,0 +1,51 @@
+{
+  "metric_source_note": "D-Fire values were captured from the Ultralytics summary emitted by the one and only official-test metric pass and are rounded as displayed. Pyro-SDIS values were captured from the same evaluator's full-precision metrics log. No source metrics were recomputed.",
+  "metrics": {
+    "dfire_official_test": {
+      "images": 4306,
+      "instances": 5181,
+      "precision": 0.74,
+      "recall": 0.681,
+      "mAP50": 0.747,
+      "mAP50_95": 0.419,
+      "per_class": {
+        "fire": {
+          "instances": 2878,
+          "precision": 0.696,
+          "recall": 0.613,
+          "mAP50": 0.694,
+          "mAP50_95": 0.356
+        },
+        "smoke": {
+          "instances": 2303,
+          "precision": 0.783,
+          "recall": 0.749,
+          "mAP50": 0.801,
+          "mAP50_95": 0.483
+        }
+      }
+    },
+    "pyro_sdis_validation": {
+      "images": 1129,
+      "instances": 1099,
+      "precision": 0.7661614372326158,
+      "recall": 0.6706096451319381,
+      "mAP50": 0.733259744332083,
+      "mAP50_95": 0.3982291307219737,
+      "per_class": {
+        "fire": {
+          "mAP50": null,
+          "mAP50_95": null,
+          "precision": null,
+          "recall": null
+        },
+        "smoke": {
+          "mAP50": 0.733259744332083,
+          "mAP50_95": 0.3982291307219737,
+          "precision": 0.7661614372326158,
+          "recall": 0.6706096451319381
+        }
+      }
+    }
+  }
+}

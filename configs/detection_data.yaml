@@ -1,0 +1,8 @@
+path: data/detection/Merged
+train: images/train
+nc: 2
+names:
+- fire
+- smoke
+val: images/val
+test: images/test

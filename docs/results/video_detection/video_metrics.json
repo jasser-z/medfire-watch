@@ -1,0 +1,71 @@
+[
+  {
+    "case": "fire",
+    "clip": "data\\detection\\sample_videos\\fire_test_12s.mp4",
+    "source_url": "https://images-assets.nasa.gov/video/NASAFIRESENSE_3840x2160_23.976fps_AAC_48kHz_Stereo_Progressive/NASAFIRESENSE_3840x2160_23.976fps_AAC_48kHz_Stereo_Progressive~mobile.mp4",
+    "license_note": "NASA Images and Video Library; US government media, verify source-specific terms before redistribution.",
+    "annotated_video": "docs\\results\\video_detection\\nasa_firesense_fire_annotated.mp4",
+    "annotated_bytes": 737708,
+    "type": "complete",
+    "frames_processed": 180,
+    "source_fps": 15.0,
+    "processing_fps": 39.09772188815837,
+    "elapsed_seconds": 4.603848800063133,
+    "output_duration_seconds": 12.0,
+    "consecutive_frames_required": 5,
+    "alert_count": 1,
+    "first_alert": {
+      "first_detection_seconds": 0.0,
+      "alert_seconds": 0.26666666666666666,
+      "consecutive_frames": 5
+    },
+    "alerts": [
+      {
+        "first_detection_seconds": 0.0,
+        "alert_seconds": 0.26666666666666666,
+        "consecutive_frames": 5
+      }
+    ],
+    "output_video_ready": true,
+    "video_id": "4742df2d7f3e49d7a85ca712202c8563",
+    "download_url": "/videos/4742df2d7f3e49d7a85ca712202c8563/download",
+    "confidence_threshold": 0.2982982982982983
+  },
+  {
+    "case": "no_fire",
+    "clip": "data\\detection\\sample_videos\\no_fire_test_12s.mp4",
+    "source_url": "https://images-assets.nasa.gov/video/GSFC_20140908_Mapping_m11633_Alaska/GSFC_20140908_Mapping_m11633_Alaska~mobile.mp4",
+    "license_note": "NASA Images and Video Library; US government media, verify source-specific terms before redistribution.",
+    "annotated_video": "docs\\results\\video_detection\\nasa_alaska_no_fire_annotated.mp4",
+    "annotated_bytes": 744224,
+    "type": "complete",
+    "frames_processed": 180,
+    "source_fps": 15.0,
+    "processing_fps": 135.96723008135143,
+    "elapsed_seconds": 1.3238484000321478,
+    "output_duration_seconds": 12.0,
+    "consecutive_frames_required": 5,
+    "alert_count": 2,
+    "first_alert": {
+      "first_detection_seconds": 4.8,
+      "alert_seconds": 5.066666666666666,
+      "consecutive_frames": 5
+    },
+    "alerts": [
+      {
+        "first_detection_seconds": 4.8,
+        "alert_seconds": 5.066666666666666,
+        "consecutive_frames": 5
+      },
+      {
+        "first_detection_seconds": 6.733333333333333,
+        "alert_seconds": 7.0,
+        "consecutive_frames": 5
+      }
+    ],
+    "output_video_ready": true,
+    "video_id": "f0c27b04e2be4adea4eb9bcc99248a66",
+    "download_url": "/videos/f0c27b04e2be4adea4eb9bcc99248a66/download",
+    "confidence_threshold": 0.2982982982982983
+  }
+]

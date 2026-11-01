@@ -1,0 +1,11 @@
+confidence_threshold: 0.2982982982982983
+confidence_selection:
+  method: maximum mean per-class F1
+  split: combined validation (D-Fire and Pyro-SDIS)
+  validation_images: 4228
+  mean_f1: 0.6988550669703522
+temporal_alert:
+  consecutive_frames: 5
+video:
+  maximum_upload_mb: 1024
+  maximum_duration_seconds: 600

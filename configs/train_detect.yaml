@@ -1,0 +1,16 @@
+model: yolov8s
+weights: pretrained
+imgsz: 640
+batch: 16
+batch_min: 8
+workers: 6
+workers_min: 2
+cache: false
+save_period: 1
+epochs: 20
+patience: 5
+amp: true
+pretrained: true
+class_mapping:
+  0: fire
+  1: smoke

@@ -1,0 +1,81 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# Credentials
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+*.pem
+*.key
+
+# Runtime/training data; retain essential map catalogues
+/data/*
+!/data/geospatial/
+/data/geospatial/*
+!/data/geospatial/country_boundaries.json
+!/data/geospatial/country_labels.json
+!/data/geospatial/places.json
+/runs/
+/logs/
+/mlruns/
+/.mlflow/
+*.db
+*.db-*
+*.sqlite*
+*.log
+
+# Keep only deployed detector weights
+*.pt
+*.pth
+*.pkl
+*.weights
+*.onnx
+*.engine
+!models/detection/weights/best.pt
+
+# Local/generated/private outputs
+/delivery/
+/demo/
+/PACKAGE_MANIFEST.json
+/PROGRESS.md
+/docs/CLEANUP_*
+/docs/camera_diag/
+/docs/images/model_tracking.png
+/docs/images/land_only_zones.png
+/docs/images/dashboard_centres_coastline_audit.png
+/docs/images/satellite_source_tile_audit.png
+/scripts/51_finish_cleanup.ps1
+*.mp4
+*.avi
+*.mov
+*.webm
+
+# Tool/editor files
+node_modules/
+.playwright-cli/
+.hyperframes/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*/.ipynb_checkpoints/
+
+# Personal/sample test images; preserve numerical evaluation charts
+/docs/**/*.jpg
+/docs/**/*.jpeg
+/docs/**/val_batch*.png
+/docs/**/train_batch*.png
+/docs/MEDIA_CLEANUP_PENDING.txt

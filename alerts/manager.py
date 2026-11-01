@@ -1,0 +1,246 @@
+from __future__ import annotations
+
+import json
+import os
+import threading
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+import requests
+import yaml
+from medfire_watch.config import PROJECT_ROOT, get_setting
+
+
+class AlertManager:
+    _history_lock = threading.RLock()
+
+    def __init__(
+        self,
+        cooldown_minutes: int = 60,
+        state_path: Path | None = None,
+    ) -> None:
+        if cooldown_minutes < 0:
+            raise ValueError("Alert cooldown cannot be negative.")
+        self.cooldown_minutes = cooldown_minutes
+        self.state_path = state_path or PROJECT_ROOT / "runs" / "alerts" / "telegram_state.json"
+        self.log_path = self.state_path.with_name("telegram_sent.jsonl")
+        self.failure_log_path = self.state_path.with_name("telegram_failed.jsonl")
+        self.history_clear_path = self.state_path.with_name("history_cleared.json")
+
+    def clear_history(self, snapshot_dir: Path) -> dict[str, int]:
+        """Clear local attempts/photos while preserving credentials and cooldown settings."""
+        directory = snapshot_dir.resolve()
+        if snapshot_dir.is_symlink() or directory.parent != snapshot_dir.absolute().parent.resolve():
+            raise OSError('Snapshot directory must not redirect outside its configured parent.')
+        deleted = remaining = 0
+        with self._history_lock:
+            attempts = sum(len([line for line in path.read_text(encoding='utf-8').splitlines() if line.strip()])
+                           for path in (self.log_path, self.failure_log_path) if path.exists())
+            self.history_clear_path.parent.mkdir(parents=True, exist_ok=True)
+            self.history_clear_path.write_text(json.dumps({
+                'cleared_at': datetime.now(timezone.utc).isoformat(), 'snapshot_directory': str(directory),
+                'generation': uuid4().hex,
+            }), encoding='utf-8')
+            for path in directory.glob('alert_*.jpg'):
+                if path.is_symlink() or not path.is_file() or path.resolve().parent != directory:
+                    continue
+                try:
+                    path.unlink()
+                    deleted += 1
+                except OSError:
+                    remaining += 1
+            for path in (self.log_path, self.failure_log_path):
+                if path.exists():
+                    path.write_text('', encoding='utf-8')
+        return {'deleted_attempts': attempts, 'deleted_snapshots': deleted, 'remaining_snapshots': remaining}
+
+    def _history_accepts(self, timestamp: datetime) -> bool:
+        if not self.history_clear_path.exists():
+            return True
+        cleared = json.loads(self.history_clear_path.read_text(encoding='utf-8'))
+        return timestamp >= datetime.fromisoformat(cleared['cleared_at'])
+
+    def _history_generation(self) -> str | None:
+        if not self.history_clear_path.exists():
+            return None
+        cleared = json.loads(self.history_clear_path.read_text(encoding='utf-8'))
+        return cleared.get('generation', cleared['cleared_at'])
+
+    @classmethod
+    def from_config(cls, config_path: Path) -> AlertManager:
+        if not config_path.is_file():
+            raise FileNotFoundError(f"Alert configuration is missing: {config_path}")
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        return cls(
+            int(config.get("cooldown_minutes", 60)),
+        )
+
+    def status(self) -> dict[str, Any]:
+        token = get_setting("TELEGRAM_BOT_TOKEN")
+        chat_id = get_setting("TELEGRAM_CHAT_ID")
+        return {
+            "configured": bool(token and chat_id),
+            "bot_token_present": bool(token),
+            "chat_id_present": bool(chat_id),
+            "cooldown_minutes": self.cooldown_minutes,
+        }
+
+
+
+    @staticmethod
+    def _save_chat_id(chat_id: str) -> None:
+        env_path = PROJECT_ROOT / ".env"
+        lines = env_path.read_text(encoding="utf-8-sig").splitlines() if env_path.exists() else []
+        key_line = f"TELEGRAM_CHAT_ID={chat_id}"
+        for index, line in enumerate(lines):
+            if line.startswith("TELEGRAM_CHAT_ID="):
+                lines[index] = key_line
+                break
+        else:
+            lines.append(key_line)
+        env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        os.environ["TELEGRAM_CHAT_ID"] = chat_id
+
+    def detect_chat(self) -> str:
+        token = get_setting("TELEGRAM_BOT_TOKEN")
+        if not token:
+            raise RuntimeError("Telegram bot token is not configured.")
+        try:
+            response = requests.get(
+                f"https://api.telegram.org/bot{token}/getUpdates",
+                params={"timeout": 0, "allowed_updates": json.dumps(["message", "edited_message"])},
+                timeout=(5, 20),
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (requests.RequestException, ValueError):
+            raise RuntimeError("Telegram chat lookup failed; check the bot token and network.") from None
+        if not payload.get("ok"):
+            raise RuntimeError("Telegram rejected the chat lookup.")
+        candidates = []
+        for update in payload.get("result", []):
+            message = update.get("message") or update.get("edited_message") or {}
+            chat = message.get("chat") or {}
+            if chat.get("type") == "private" and chat.get("id") is not None:
+                candidates.append(str(chat["id"]))
+        if not candidates:
+            raise LookupError("No private chat was found. Open the bot and send it a message first.")
+        chat_id = candidates[-1]
+        self._save_chat_id(chat_id)
+        return chat_id
+
+    def _read_state(self) -> dict[str, str]:
+        with self._history_lock:
+            if not self.state_path.exists():
+                return {}
+            try:
+                payload = json.loads(self.state_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise RuntimeError(f"Telegram alert state could not be read: {self.state_path}") from exc
+            if not isinstance(payload, dict):
+                raise RuntimeError(f"Telegram alert state has an invalid shape: {self.state_path}")
+            return {str(key): str(value) for key, value in payload.items()}
+
+    def send(self, message: str, kind: str, dedupe_key: str, photo: Path | None = None) -> dict[str, Any]:
+        token = get_setting("TELEGRAM_BOT_TOKEN")
+        chat_id = get_setting("TELEGRAM_CHAT_ID")
+        if not token or not chat_id:
+            raise RuntimeError("Set TELEGRAM_BOT_TOKEN and detect a private Telegram chat first.")
+        with self._history_lock:
+            generation = self._history_generation()
+            state = self._read_state()
+            now = datetime.now(timezone.utc)
+        previous = state.get(dedupe_key)
+        if previous:
+            sent_at = datetime.fromisoformat(previous)
+            if now - sent_at < timedelta(minutes=self.cooldown_minutes):
+                return {"sent": False, "reason": "cooldown"}
+
+        base_url = f"https://api.telegram.org/bot{token}"
+        try:
+            if photo is not None:
+                # Release the file handle before the network wait so Delete all works on Windows.
+                with self._history_lock:
+                    image_bytes = photo.read_bytes()
+                response = requests.post(
+                    f"{base_url}/sendPhoto",
+                    data={"chat_id": chat_id, "caption": message[:1024]},
+                    files={"photo": (photo.name, image_bytes, 'image/jpeg')},
+                    timeout=(5, 30),
+                )
+            else:
+                response = requests.post(
+                    f"{base_url}/sendMessage",
+                    json={"chat_id": chat_id, "text": message[:4096]},
+                    timeout=(5, 30),
+                )
+            response.raise_for_status()
+            result = response.json()
+        except (OSError, requests.RequestException, ValueError):
+            raise RuntimeError("Telegram did not confirm delivery; no message was recorded as sent.") from None
+        if not result.get("ok"):
+            raise RuntimeError("Telegram did not confirm delivery; no message was recorded as sent.")
+
+        log_entry = {
+            "sent_at_utc": now.isoformat(),
+            "kind": kind,
+            "chat_id": str(chat_id),
+            "message_id": result.get("result", {}).get("message_id"),
+            "confirmed": True,
+            "photo_name": photo.name if photo is not None else None,
+        }
+        with self._history_lock:
+            state = self._read_state()
+            state[dedupe_key] = now.isoformat()
+            self.state_path.parent.mkdir(parents=True, exist_ok=True)
+            self.state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+            if generation == self._history_generation():
+                with self.log_path.open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps(log_entry, separators=(",", ":")) + "\n")
+        return {"sent": True, **log_entry}
+
+    def sent_log(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self._history_lock:
+            if not self.log_path.exists():
+                return []
+            entries = []
+            for line in self.log_path.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    item = json.loads(line)
+                    if item.get("confirmed") is True:
+                        entries.append(item)
+            return entries[-limit:][::-1]
+
+    def record_failure(self, kind: str, attempt: int, reason: str, photo_name: str | None = None) -> None:
+        """Persist a safe, fixed reason; never write the exception or request URL."""
+        self.failure_log_path.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "sent_at_utc": datetime.now(timezone.utc).isoformat(),
+            "kind": kind,
+            "attempt": attempt,
+            "confirmed": False,
+            "reason": reason,
+            "photo_name": photo_name,
+        }
+        with self._history_lock:
+            if not self._history_accepts(datetime.fromisoformat(entry['sent_at_utc'])):
+                return
+            if photo_name and self.history_clear_path.exists():
+                cleared = json.loads(self.history_clear_path.read_text(encoding='utf-8'))
+                if not (Path(cleared['snapshot_directory']) / photo_name).is_file():
+                    return  # A retry for a deleted snapshot must not restore cleared history.
+            with self.failure_log_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(entry, separators=(",", ":")) + "\n")
+
+    def attempt_log(self, limit: int = 100, kind: str | None = None) -> list[dict[str, Any]]:
+        with self._history_lock:
+            entries = self.sent_log(100000 if kind else limit)
+            if self.failure_log_path.exists():
+                with self.failure_log_path.open(encoding="utf-8") as handle:
+                    entries.extend(json.loads(line) for line in handle if line.strip())
+            if kind:
+                entries = [item for item in entries if item.get("kind") == kind]
+            return sorted(entries, key=lambda item: item["sent_at_utc"], reverse=True)[:limit]
+
