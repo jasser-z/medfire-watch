@@ -79,3 +79,8 @@ Thumbs.db
 /docs/**/val_batch*.png
 /docs/**/train_batch*.png
 /docs/MEDIA_CLEANUP_PENDING.txt
+
+# Reviewed public interface screenshots
+!/docs/screenshots/
+!/docs/screenshots/fire-danger.jpg
+!/docs/screenshots/image-inspector.jpg

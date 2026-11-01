@@ -29,6 +29,14 @@ The map starts with the last **24 hours** of observations. Controls offer **1, 3
 
 A feed check is different from a satellite observation. Automatic checks cannot remove satellite-pass, processing or forecast-provider delays. The satellite basemap is a dated mosaic, not a live camera view.
 
+## Interface screenshots
+
+Captured from the local application on 1 November 2026. The map shows satellite observation clusters, not confirmed wildfire counts. The image inspector is shown before uploading media; no personal camera footage or credentials are included.
+
+| Fire danger | Test · Image inspector |
+| --- | --- |
+| ![Fire danger globe with satellite observation clusters](docs/screenshots/fire-danger.jpg) | ![Empty image inspector with upload controls](docs/screenshots/image-inspector.jpg) |
+
 ## Technology
 
 Python 3.11 · FastAPI · Streamlit · MapLibre GL JS · Ultralytics YOLOv8s · PyTorch · OpenCV · FFmpeg · Telegram Bot API
@@ -252,6 +260,8 @@ Credits: NASA FIRMS; European Union Copernicus EMS/GWIS and ECMWF; Open-Meteo; E
 La caméra PC est l’intégration actuelle. La connexion d’un drone est une évolution prévue, pas une fonction validée.
 
 **Les points satellites ne confirment pas un incendie.** Le danger météo indique des conditions favorables au feu, pas la probabilité d’un départ de feu précis. Le projet aide à examiner les signaux et ne remplace pas les secours.
+
+Captures de l’interface locale : [carte et inspection d’images](#interface-screenshots), sans images de caméra personnelles ni identifiants.
 
 ## Installation sous Windows
 
