@@ -41,6 +41,7 @@ Sources: [split metrics](docs/results/detection_final_metrics.json),
 | ![Fire danger](docs/screenshots/fire-danger.png) | ![Annotated image](docs/screenshots/image-inspector.png) |
 | ![Real NASA heat observations](docs/screenshots/satellite-detections.png) | ![Video studio](docs/screenshots/video-studio.png) |
 | ![Simulated camera detection](docs/screenshots/live-camera.png) | ![Recorded Telegram alert](docs/screenshots/alerts.png) |
+| ![Telegram delivery proof](docs/screenshots/telegram-delivery-proof.png) | **Delivery proof** · 27 Oct 2026 · Smoke 73%. |
 
 Satellite points show actual NASA observations. The Earth-to-city GIF above demonstrates 3D buildings.
 

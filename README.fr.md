@@ -41,6 +41,7 @@ Sources : [métriques](docs/results/detection_final_metrics.json),
 | ![Carte](docs/screenshots/fire-danger.png) | ![Inspection](docs/screenshots/image-inspector.png) |
 | ![Observations NASA réelles](docs/screenshots/satellite-detections.png) | ![Studio vidéo](docs/screenshots/video-studio.png) |
 | ![Détection par caméra simulée](docs/screenshots/live-camera.png) | ![Alerte Telegram enregistrée](docs/screenshots/alerts.png) |
+| ![Preuve de réception Telegram](docs/screenshots/telegram-delivery-proof.png) | **Photo reçue** · 27 oct. 2026 · Fumée 73 %. |
 
 Les points satellite sont des observations NASA réelles. Le GIF du globe à la ville présente les bâtiments 3D.
 

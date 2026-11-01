@@ -72,6 +72,11 @@ The capture source uses NASA's medium-resolution rendition. Annotations are actu
 
 ## Author contribution
 
+`docs/screenshots/telegram-delivery-proof.png` is the clearer full Telegram conversation
+screenshot supplied by the author on 2026-11-02, included unchanged. It shows the
+medfire-watch bot, the annotated photo, and the original message timestamp and confidence.
+Both READMEs display it as delivery proof alongside the interface screenshots.
+
 `docs/screenshots/telegram-alert.png` is the Telegram screenshot supplied by Jasser Zormati.
 It is included as supplied: the medfire-watch bot and annotated photo are visible, without
 personal names, chat identifiers or phone notifications. The message timestamp is
