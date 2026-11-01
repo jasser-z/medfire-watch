@@ -24,14 +24,13 @@ def count_class_boxes(dataset_root: Path) -> Counter[int]:
                 class_value = float(fields[0])
                 class_id = int(class_value)
                 if class_value != class_id or class_id not in {0, 1}:
-                    raise ValueError(
-                        f"Unexpected class ID {fields[0]!r} in {label_path}:{line_number}."
-                    )
+                    raise ValueError(f"Unexpected class ID {fields[0]!r} in {label_path}:{line_number}.")
                 counts[class_id] += 1
     return counts
 
 
 def detection_metrics(metrics: Any) -> dict[str, Any]:
+    """Extract aggregate and per-class detector evaluation metrics."""
     box = getattr(metrics, "box", None)
     aggregate = getattr(metrics, "results_dict", {}) or {}
     result: dict[str, Any] = {

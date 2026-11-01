@@ -1,5 +1,5 @@
 [server]
-maxUploadSize = 100
+maxUploadSize = 10
 
 [theme]
 base = "dark"
@@ -7,3 +7,9 @@ primaryColor = "#ff5a45"
 backgroundColor = "#07101b"
 secondaryBackgroundColor = "#101d2b"
 textColor = "#e9f1f6"
+
+[client]
+toolbarMode = "minimal"
+
+[ui]
+hideTopBar = true

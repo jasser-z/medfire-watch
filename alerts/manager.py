@@ -33,17 +33,26 @@ class AlertManager:
         """Clear local attempts/photos while preserving credentials and cooldown settings."""
         directory = snapshot_dir.resolve()
         if snapshot_dir.is_symlink() or directory.parent != snapshot_dir.absolute().parent.resolve():
-            raise OSError('Snapshot directory must not redirect outside its configured parent.')
+            raise OSError("Snapshot directory must not redirect outside its configured parent.")
         deleted = remaining = 0
         with self._history_lock:
-            attempts = sum(len([line for line in path.read_text(encoding='utf-8').splitlines() if line.strip()])
-                           for path in (self.log_path, self.failure_log_path) if path.exists())
+            attempts = sum(
+                len([line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()])
+                for path in (self.log_path, self.failure_log_path)
+                if path.exists()
+            )
             self.history_clear_path.parent.mkdir(parents=True, exist_ok=True)
-            self.history_clear_path.write_text(json.dumps({
-                'cleared_at': datetime.now(timezone.utc).isoformat(), 'snapshot_directory': str(directory),
-                'generation': uuid4().hex,
-            }), encoding='utf-8')
-            for path in directory.glob('alert_*.jpg'):
+            self.history_clear_path.write_text(
+                json.dumps(
+                    {
+                        "cleared_at": datetime.now(timezone.utc).isoformat(),
+                        "snapshot_directory": str(directory),
+                        "generation": uuid4().hex,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            for path in directory.glob("alert_*.jpg"):
                 if path.is_symlink() or not path.is_file() or path.resolve().parent != directory:
                     continue
                 try:
@@ -53,23 +62,24 @@ class AlertManager:
                     remaining += 1
             for path in (self.log_path, self.failure_log_path):
                 if path.exists():
-                    path.write_text('', encoding='utf-8')
-        return {'deleted_attempts': attempts, 'deleted_snapshots': deleted, 'remaining_snapshots': remaining}
+                    path.write_text("", encoding="utf-8")
+        return {"deleted_attempts": attempts, "deleted_snapshots": deleted, "remaining_snapshots": remaining}
 
     def _history_accepts(self, timestamp: datetime) -> bool:
         if not self.history_clear_path.exists():
             return True
-        cleared = json.loads(self.history_clear_path.read_text(encoding='utf-8'))
-        return timestamp >= datetime.fromisoformat(cleared['cleared_at'])
+        cleared = json.loads(self.history_clear_path.read_text(encoding="utf-8"))
+        return timestamp >= datetime.fromisoformat(cleared["cleared_at"])
 
     def _history_generation(self) -> str | None:
         if not self.history_clear_path.exists():
             return None
-        cleared = json.loads(self.history_clear_path.read_text(encoding='utf-8'))
-        return cleared.get('generation', cleared['cleared_at'])
+        cleared = json.loads(self.history_clear_path.read_text(encoding="utf-8"))
+        return cleared.get("generation", cleared["cleared_at"])
 
     @classmethod
     def from_config(cls, config_path: Path) -> AlertManager:
+        """Construct an alert manager from its YAML configuration."""
         if not config_path.is_file():
             raise FileNotFoundError(f"Alert configuration is missing: {config_path}")
         config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
@@ -78,6 +88,7 @@ class AlertManager:
         )
 
     def status(self) -> dict[str, Any]:
+        """Return the current configuration and delivery status."""
         token = get_setting("TELEGRAM_BOT_TOKEN")
         chat_id = get_setting("TELEGRAM_CHAT_ID")
         return {
@@ -86,8 +97,6 @@ class AlertManager:
             "chat_id_present": bool(chat_id),
             "cooldown_minutes": self.cooldown_minutes,
         }
-
-
 
     @staticmethod
     def _save_chat_id(chat_id: str) -> None:
@@ -104,6 +113,7 @@ class AlertManager:
         os.environ["TELEGRAM_CHAT_ID"] = chat_id
 
     def detect_chat(self) -> str:
+        """Discover and save a Telegram chat from recent bot updates."""
         token = get_setting("TELEGRAM_BOT_TOKEN")
         if not token:
             raise RuntimeError("Telegram bot token is not configured.")
@@ -144,6 +154,7 @@ class AlertManager:
             return {str(key): str(value) for key, value in payload.items()}
 
     def send(self, message: str, kind: str, dedupe_key: str, photo: Path | None = None) -> dict[str, Any]:
+        """Deliver a message or photo and record confirmed Telegram responses."""
         token = get_setting("TELEGRAM_BOT_TOKEN")
         chat_id = get_setting("TELEGRAM_CHAT_ID")
         if not token or not chat_id:
@@ -167,7 +178,7 @@ class AlertManager:
                 response = requests.post(
                     f"{base_url}/sendPhoto",
                     data={"chat_id": chat_id, "caption": message[:1024]},
-                    files={"photo": (photo.name, image_bytes, 'image/jpeg')},
+                    files={"photo": (photo.name, image_bytes, "image/jpeg")},
                     timeout=(5, 30),
                 )
             else:
@@ -202,6 +213,7 @@ class AlertManager:
         return {"sent": True, **log_entry}
 
     def sent_log(self, limit: int = 100) -> list[dict[str, Any]]:
+        """List confirmed sends from the attempt log."""
         with self._history_lock:
             if not self.log_path.exists():
                 return []
@@ -225,16 +237,17 @@ class AlertManager:
             "photo_name": photo_name,
         }
         with self._history_lock:
-            if not self._history_accepts(datetime.fromisoformat(entry['sent_at_utc'])):
+            if not self._history_accepts(datetime.fromisoformat(entry["sent_at_utc"])):
                 return
             if photo_name and self.history_clear_path.exists():
-                cleared = json.loads(self.history_clear_path.read_text(encoding='utf-8'))
-                if not (Path(cleared['snapshot_directory']) / photo_name).is_file():
+                cleared = json.loads(self.history_clear_path.read_text(encoding="utf-8"))
+                if not (Path(cleared["snapshot_directory"]) / photo_name).is_file():
                     return  # A retry for a deleted snapshot must not restore cleared history.
             with self.failure_log_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(entry, separators=(",", ":")) + "\n")
 
     def attempt_log(self, limit: int = 100, kind: str | None = None) -> list[dict[str, Any]]:
+        """Load recent delivery attempts, optionally filtered by channel."""
         with self._history_lock:
             entries = self.sent_log(100000 if kind else limit)
             if self.failure_log_path.exists():
@@ -243,4 +256,3 @@ class AlertManager:
             if kind:
                 entries = [item for item in entries if item.get("kind") == kind]
             return sorted(entries, key=lambda item: item["sent_at_utc"], reverse=True)[:limit]
-

@@ -22,10 +22,7 @@ def draw_detections(image: np.ndarray, detections: list[dict[str, Any]]) -> np.n
     rgb_image = Image.fromarray(image[:, :, ::-1])
     draw = ImageDraw.Draw(rgb_image)
     for detection in detections:
-        x1, y1, x2, y2 = (
-            int(round(value))
-            for value in detection["xyxy"]
-        )
+        x1, y1, x2, y2 = (int(round(value)) for value in detection["xyxy"])
         x1, x2 = sorted((max(0, min(width - 1, x1)), max(0, min(width - 1, x2))))
         y1, y2 = sorted((max(0, min(height - 1, y1)), max(0, min(height - 1, y2))))
         class_name = str(detection["class"]).lower()

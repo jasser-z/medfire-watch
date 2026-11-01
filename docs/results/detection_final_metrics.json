@@ -4,7 +4,7 @@
     "fire",
     "smoke"
   ],
-  "evaluation_policy": "Each source has one final metric evaluation pass. The D-Fire test set is held out and must not be used for tuning. Pyro-SDIS contains smoke and negative images only; fire class scores are undefined.",
+  "evaluation_policy": "One final metric pass per source; D-Fire test held out. Pyro-SDIS has no fire annotations; fire scores are undefined.",
   "metrics": {
     "dfire_official_test": {
       "images": 4306,
@@ -73,74 +73,11 @@
       }
     }
   },
-  "prior_metrics_source_note": null,
-  "prediction_samples": [
-    {
-      "file": "detection_samples/dfire_test_false_negative_01_dfire_AoF07718.jpg",
-      "error_category": "false_negative"
-    },
-    {
-      "file": "detection_samples/dfire_test_false_negative_02_dfire_AoF07719.jpg",
-      "error_category": "false_negative"
-    },
-    {
-      "file": "detection_samples/dfire_test_false_negative_03_dfire_AoF07720.jpg",
-      "error_category": "false_negative"
-    },
-    {
-      "file": "detection_samples/dfire_test_false_negative_04_dfire_AoF07723.jpg",
-      "error_category": "false_negative"
-    },
-    {
-      "file": "detection_samples/dfire_test_false_negative_05_dfire_AoF07726.jpg",
-      "error_category": "false_negative"
-    },
-    {
-      "file": "detection_samples/dfire_test_false_negative_06_dfire_AoF07727.jpg",
-      "error_category": "false_negative"
-    },
-    {
-      "file": "detection_samples/dfire_test_false_positive_07_dfire_AoF06735.jpg",
-      "error_category": "false_positive"
-    },
-    {
-      "file": "detection_samples/dfire_test_false_positive_08_dfire_AoF06737.jpg",
-      "error_category": "false_positive"
-    },
-    {
-      "file": "detection_samples/dfire_test_false_positive_09_dfire_AoF06764.jpg",
-      "error_category": "false_positive"
-    },
-    {
-      "file": "detection_samples/dfire_test_false_positive_10_dfire_AoF06898.jpg",
-      "error_category": "false_positive"
-    },
-    {
-      "file": "detection_samples/dfire_test_false_positive_11_dfire_AoF06931.jpg",
-      "error_category": "false_positive"
-    },
-    {
-      "file": "detection_samples/dfire_test_false_positive_12_dfire_AoF06940.jpg",
-      "error_category": "false_positive"
-    }
-  ],
   "artifacts": [
     "dfire_official_test_confusion_matrix.png",
     "dfire_official_test_PR_curve.png",
     "pyro_sdis_validation_confusion_matrix.png",
     "pyro_sdis_validation_PR_curve.png",
-    "dfire_test_false_negative_01_dfire_AoF07718.jpg",
-    "dfire_test_false_negative_02_dfire_AoF07719.jpg",
-    "dfire_test_false_negative_03_dfire_AoF07720.jpg",
-    "dfire_test_false_negative_04_dfire_AoF07723.jpg",
-    "dfire_test_false_negative_05_dfire_AoF07726.jpg",
-    "dfire_test_false_negative_06_dfire_AoF07727.jpg",
-    "dfire_test_false_positive_07_dfire_AoF06735.jpg",
-    "dfire_test_false_positive_08_dfire_AoF06737.jpg",
-    "dfire_test_false_positive_09_dfire_AoF06764.jpg",
-    "dfire_test_false_positive_10_dfire_AoF06898.jpg",
-    "dfire_test_false_positive_11_dfire_AoF06931.jpg",
-    "dfire_test_false_positive_12_dfire_AoF06940.jpg",
     "dfire_validation_confusion_matrix.png",
     "dfire_validation_PR_curve.png"
   ]

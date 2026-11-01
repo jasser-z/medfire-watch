@@ -52,9 +52,7 @@ def test_merge_maps_classes_sanitizes_rows_and_keeps_official_test_held_out(tmp_
         output_root=output,
     )
 
-    assert manifest["sources"]["D-Fire"]["official_split_audit"][
-        "official_test_in_kaggle_train_or_val"
-    ] == 0
+    assert manifest["sources"]["D-Fire"]["official_split_audit"]["official_test_in_kaggle_train_or_val"] == 0
     assert manifest["sources"]["D-Fire"]["invalid_annotation_rows_omitted"] == 2
     assert manifest["counts_by_split"]["train"]["images"] == 2
     assert manifest["counts_by_split"]["val"]["images"] == 2
@@ -62,9 +60,7 @@ def test_merge_maps_classes_sanitizes_rows_and_keeps_official_test_held_out(tmp_
     assert manifest["counts_by_split"]["train"]["boxes"] == {"fire": 1, "smoke": 1}
     assert manifest["counts_by_split"]["test"]["boxes"] == {"fire": 1, "smoke": 0}
     assert (output / "images" / "test" / "dfire" / "dfire_fire-test.jpg").is_file()
-    test_label = (output / "labels" / "test" / "dfire" / "dfire_fire-test.txt").read_text(
-        encoding="utf-8"
-    )
+    test_label = (output / "labels" / "test" / "dfire" / "dfire_fire-test.txt").read_text(encoding="utf-8")
     assert test_label == "0 0.5 0.5 0.2 0.2"
     dataset_config = yaml.safe_load((output / "dataset.yaml").read_text(encoding="utf-8"))
     assert dataset_config["path"] == str(output.resolve())

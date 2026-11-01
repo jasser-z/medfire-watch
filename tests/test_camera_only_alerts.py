@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import api.main as api
+import api.routers.alerts as api
 from alerts.manager import AlertManager
+from api.routers.video import local_video_test
 
 
 def test_camera_log_filters_text_sends_before_limiting(tmp_path: Path) -> None:
@@ -18,8 +19,10 @@ def test_camera_log_filters_text_sends_before_limiting(tmp_path: Path) -> None:
 
 
 def test_fullscreen_uses_shared_stage_not_native_video() -> None:
-    player = api.local_video_test()
+    player = local_video_test()
+    assert "/video-test/app.mjs" in player
+    player += (Path(__file__).parents[1] / "dashboard/video_player.mjs").read_text(encoding="utf-8")
     assert "stage.requestFullscreen()" in player
     assert "v.requestFullscreen()" not in player
     assert 'id="v" controls' not in player
-    assert "Math.min(w/vw,h/vh)" in player
+    assert "Math.min(w / vw, h / vh)" in player

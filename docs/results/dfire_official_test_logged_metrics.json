@@ -1,5 +1,5 @@
 {
-  "metric_source_note": "D-Fire values were captured from the Ultralytics summary emitted by the one and only official-test metric pass and are rounded as displayed. Pyro-SDIS values were captured from the same evaluator's full-precision metrics log. No source metrics were recomputed.",
+  "metric_source_note": "D-Fire: rounded official-test Ultralytics summary. Pyro-SDIS: full-precision evaluator log. Metrics are not recomputed.",
   "metrics": {
     "dfire_official_test": {
       "images": 4306,

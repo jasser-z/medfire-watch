@@ -34,4 +34,3 @@ def get_setting(name: str, default: Any | None = None) -> Any:
     """Read an environment variable or return a safe default."""
     load_env()
     return os.getenv(name, default)
-

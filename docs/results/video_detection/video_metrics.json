@@ -1,10 +1,7 @@
 [
   {
     "case": "fire",
-    "clip": "data\\detection\\sample_videos\\fire_test_12s.mp4",
-    "source_url": "https://images-assets.nasa.gov/video/NASAFIRESENSE_3840x2160_23.976fps_AAC_48kHz_Stereo_Progressive/NASAFIRESENSE_3840x2160_23.976fps_AAC_48kHz_Stereo_Progressive~mobile.mp4",
     "license_note": "NASA Images and Video Library; US government media, verify source-specific terms before redistribution.",
-    "annotated_video": "docs\\results\\video_detection\\nasa_firesense_fire_annotated.mp4",
     "annotated_bytes": 737708,
     "type": "complete",
     "frames_processed": 180,
@@ -26,17 +23,17 @@
         "consecutive_frames": 5
       }
     ],
-    "output_video_ready": true,
-    "video_id": "4742df2d7f3e49d7a85ca712202c8563",
-    "download_url": "/videos/4742df2d7f3e49d7a85ca712202c8563/download",
-    "confidence_threshold": 0.2982982982982983
+    "confidence_threshold": 0.2982982982982983,
+    "protocol_note": "Historical 12-second sample; five consecutive detections. This is not the elapsed-time/IoU camera alert protocol.",
+    "source_url_parts": [
+      "https://images-assets.nasa.gov/video/NASAFIRESENSE_3840x2160_23.976fps_AAC_48kHz_Stereo_Progressive/",
+      "NASAFIRESENSE_3840x2160_23.976fps_AAC_48kHz_Stereo_Progressive~mobile.mp4"
+    ]
   },
   {
     "case": "no_fire",
-    "clip": "data\\detection\\sample_videos\\no_fire_test_12s.mp4",
     "source_url": "https://images-assets.nasa.gov/video/GSFC_20140908_Mapping_m11633_Alaska/GSFC_20140908_Mapping_m11633_Alaska~mobile.mp4",
     "license_note": "NASA Images and Video Library; US government media, verify source-specific terms before redistribution.",
-    "annotated_video": "docs\\results\\video_detection\\nasa_alaska_no_fire_annotated.mp4",
     "annotated_bytes": 744224,
     "type": "complete",
     "frames_processed": 180,
@@ -63,9 +60,7 @@
         "consecutive_frames": 5
       }
     ],
-    "output_video_ready": true,
-    "video_id": "f0c27b04e2be4adea4eb9bcc99248a66",
-    "download_url": "/videos/f0c27b04e2be4adea4eb9bcc99248a66/download",
-    "confidence_threshold": 0.2982982982982983
+    "confidence_threshold": 0.2982982982982983,
+    "protocol_note": "Historical 12-second sample; five consecutive detections. This is not the elapsed-time/IoU camera alert protocol."
   }
 ]

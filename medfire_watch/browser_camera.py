@@ -40,14 +40,20 @@ class BrowserCameraMonitor:
         self._sender.start()
 
     def process(self, image: np.ndarray, detector: Any) -> dict[str, Any]:
+        """Detect a reduced camera frame and update alert persistence."""
         height, width = image.shape[:2]
         scale = min(self.detector_width / max(width, 1), 1.0)
-        reduced = cv2.resize(image, (round(width * scale), round(height * scale)), interpolation=cv2.INTER_AREA) if scale < 1 else image
+        reduced = (
+            cv2.resize(image, (round(width * scale), round(height * scale)), interpolation=cv2.INTER_AREA)
+            if scale < 1
+            else image
+        )
         started = time.monotonic()
         result = detector.predict(reduced)
         detections = scale_detections(result["detections"], (reduced.shape[1], reduced.shape[0]), (width, height))
         candidates = [
-            item for item in detections
+            item
+            for item in detections
             if item["class"] in {"fire", "smoke"}
             and float(item["confidence"]) >= self.alert_confidence
             and (
@@ -63,11 +69,18 @@ class BrowserCameraMonitor:
             alert_id = None
             if alert is not None:
                 alert_id = uuid.uuid4().hex
-                self._pending[alert_id] = {"detections": detections, "alert": alert, "expires": now + 8,
-                                           "image_width": width, "image_height": height}
+                self._pending[alert_id] = {
+                    "detections": detections,
+                    "alert": alert,
+                    "expires": now + 8,
+                    "image_width": width,
+                    "image_height": height,
+                }
             self._pending = {key: value for key, value in self._pending.items() if value["expires"] >= now}
             self._times.append(now)
-            updates = (len(self._times) - 1) / max(self._times[-1] - self._times[0], 1e-6) if len(self._times) > 1 else 0.0
+            updates = (
+                (len(self._times) - 1) / max(self._times[-1] - self._times[0], 1e-6) if len(self._times) > 1 else 0.0
+            )
         return {
             "detections": detections,
             "image_width": width,
@@ -80,6 +93,7 @@ class BrowserCameraMonitor:
         }
 
     def submit_full_resolution_snapshot(self, alert_id: str, image: np.ndarray) -> bool:
+        """Queue the matching source frame for a pending alert."""
         with self._lock:
             item = self._pending.pop(alert_id, None)
         if item is None:
@@ -94,11 +108,14 @@ class BrowserCameraMonitor:
         except queue.Full:
             self.last_error = "Camera alert queue is full."
             self.failure_count += 1
-            AlertManager.from_config(PROJECT_ROOT / "configs" / "alerts.yaml").record_failure("live_camera", 0, "Queue full")
+            AlertManager.from_config(PROJECT_ROOT / "configs" / "alerts.yaml").record_failure(
+                "live_camera", 0, "Queue full"
+            )
             return False
         return True
 
     def status(self) -> dict[str, Any]:
+        """Return the current configuration and delivery status."""
         return {"delivered": self.delivery_count, "failed": self.failure_count, "last_error": self.last_error}
 
     def _send(self) -> None:
@@ -111,8 +128,10 @@ class BrowserCameraMonitor:
                 if not cv2.imwrite(str(photo), draw_detections(image, detections)):
                     raise OSError("Snapshot encode failed")
                 detection = alert["detection"]
-                caption = (f"Live camera · {datetime.now().astimezone().isoformat(timespec='seconds')} · "
-                           f"{detection['class']} · confidence {float(detection['confidence']):.0%}")
+                caption = (
+                    f"Live camera · {datetime.now().astimezone().isoformat(timespec='seconds')} · "
+                    f"{detection['class']} · confidence {float(detection['confidence']):.0%}"
+                )
                 manager = AlertManager.from_config(PROJECT_ROOT / "configs" / "alerts.yaml")
                 dedupe = f"live_camera:{uuid.uuid4().hex}"
                 for attempt in range(1, 4):
@@ -126,7 +145,9 @@ class BrowserCameraMonitor:
                         break
                     except Exception as exc:
                         self.last_error = f"Telegram delivery failed ({type(exc).__name__})."
-                        manager.record_failure("live_camera", attempt, "Delivery failed; check configuration and network", photo.name)
+                        manager.record_failure(
+                            "live_camera", attempt, "Delivery failed; check configuration and network", photo.name
+                        )
                         if attempt == 3:
                             self.failure_count += 1
                         else:

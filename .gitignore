@@ -46,18 +46,7 @@ dist/
 *.engine
 !models/detection/weights/best.pt
 
-# Local/generated/private outputs
-/delivery/
-/demo/
-/PACKAGE_MANIFEST.json
-/PROGRESS.md
-/docs/CLEANUP_*
-/docs/camera_diag/
-/docs/images/model_tracking.png
-/docs/images/land_only_zones.png
-/docs/images/dashboard_centres_coastline_audit.png
-/docs/images/satellite_source_tile_audit.png
-/scripts/51_finish_cleanup.ps1
+# Video inputs and outputs
 *.mp4
 *.avi
 *.mov
@@ -65,22 +54,18 @@ dist/
 
 # Tool/editor files
 node_modules/
-.playwright-cli/
-.hyperframes/
+coverage/
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
 */.ipynb_checkpoints/
 
-# Personal/sample test images; preserve numerical evaluation charts
+# Dataset samples; evaluation plots and interface media are versioned
 /docs/**/*.jpg
 /docs/**/*.jpeg
 /docs/**/val_batch*.png
 /docs/**/train_batch*.png
-/docs/MEDIA_CLEANUP_PENDING.txt
-
-# Reviewed public interface screenshots
-!/docs/screenshots/
-!/docs/screenshots/fire-danger.jpg
-!/docs/screenshots/image-inspector.jpg
+!/docs/screenshots/*.jpg
+!/docs/screenshots/*.png
+!/docs/media/*.gif

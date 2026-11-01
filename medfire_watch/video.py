@@ -28,6 +28,7 @@ class ConsecutiveDetectionAlert:
         self._alerted = False
 
     def update(self, detected: bool, timestamp_seconds: float) -> dict[str, Any] | None:
+        """Advance detection persistence and return a newly confirmed event."""
         if not detected:
             self._streak = 0
             self._first_detection_seconds = None
@@ -47,13 +48,12 @@ class ConsecutiveDetectionAlert:
 
     @property
     def alerted(self) -> bool:
+        """Report whether the current consecutive-frame event has fired."""
         return self._alerted
 
 
 def _draw_detections(frame: np.ndarray, detections: list[dict[str, Any]]) -> np.ndarray:
     return draw_detections(frame, detections)
-
-
 
 
 def iter_video_detections(
@@ -66,6 +66,7 @@ def iter_video_detections(
     batch_size: int = 8,
     initial_results: list[dict[str, Any]] | None = None,
 ) -> Iterator[dict[str, Any]]:
+    """Yield export progress and final frame-preserving video results."""
     if batch_size < 1:
         raise ValueError("Video inference batch size must be at least one.")
     elapsed_start = time.perf_counter()
@@ -83,10 +84,30 @@ def iter_video_detections(
     raw_output_path = output_path.with_name(f"{output_path.stem}.video-only.mp4")
     encoder_name, codec_arguments = encoder_arguments(width, height)
     encoder = subprocess.Popen(
-        [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgr24",
-         "-s", f"{width}x{height}", "-r", str(fps), "-i", "pipe:0", "-an", *codec_arguments,
-         "-pix_fmt", "yuv420p", str(raw_output_path)],
-        stdin=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        [
+            ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "bgr24",
+            "-s",
+            f"{width}x{height}",
+            "-r",
+            str(fps),
+            "-i",
+            "pipe:0",
+            "-an",
+            *codec_arguments,
+            "-pix_fmt",
+            "yuv420p",
+            str(raw_output_path),
+        ],
+        stdin=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
         creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
     )
 
@@ -106,6 +127,7 @@ def iter_video_detections(
     first_detection_seconds: float | None = None
 
     def encode_frames() -> None:
+        """Annotate and encode queued source-resolution frames."""
         nonlocal frames_encoded
         try:
             while True:
@@ -125,6 +147,7 @@ def iter_video_detections(
     writer.start()
 
     def read_frames() -> None:
+        """Read frames into the bounded export queue."""
         nonlocal frames_decoded
         try:
             while not stop_reader.is_set():
@@ -168,9 +191,13 @@ def iter_video_detections(
                 frames.append(item)
             if not frames and reached_end:
                 break
-            cached = (initial_results or [])[frame_index:frame_index + len(frames)]
-            pending = frames[len(cached):]
-            fresh = (infer_batch(pending) if infer_batch is not None else [infer(frame) for frame in pending]) if pending else []
+            cached = (initial_results or [])[frame_index : frame_index + len(frames)]
+            pending = frames[len(cached) :]
+            fresh = (
+                (infer_batch(pending) if infer_batch is not None else [infer(frame) for frame in pending])
+                if pending
+                else []
+            )
             results = [*cached, *fresh]
             if results:
                 detector_device = results[0].get("device", "unknown")
@@ -242,7 +269,9 @@ def iter_video_detections(
             raise RuntimeError("Video encoder worker failed.") from encoder_errors[0]
 
     if frames_encoded != frame_index or frames_decoded != frame_index:
-        raise RuntimeError(f"Frame counts differ: decoded={frames_decoded}, inferred={frame_index}, encoded={frames_encoded}.")
+        raise RuntimeError(
+            f"Frame counts differ: decoded={frames_decoded}, inferred={frame_index}, encoded={frames_encoded}."
+        )
 
     output_duration_seconds = frame_index / fps
     try:
@@ -267,7 +296,11 @@ def iter_video_detections(
             str(output_path),
         ]
         subprocess.run(
-            command, check=True, capture_output=True, text=True, timeout=300,
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=300,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
     except (OSError, subprocess.SubprocessError) as exc:
@@ -307,5 +340,3 @@ def iter_video_detections(
         "detection_timeline": timeline,
         "output_video_ready": output_path.is_file() and output_path.stat().st_size > 0,
     }
-
-

@@ -1,4 +1,5 @@
 """FFmpeg hardware video I/O. Pixel annotation still runs in host memory."""
+
 from __future__ import annotations
 
 import os
@@ -16,10 +17,27 @@ def nvenc_available() -> bool:
     """Exercise the encoder/driver, rather than just trusting an encoder listing."""
     try:
         result = subprocess.run(
-            [imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-f", "lavfi",
-             "-i", "color=size=320x180:rate=60", "-frames:v", "1", "-c:v", "h264_nvenc",
-             "-preset", "p4", "-f", "null", "-"],
-            capture_output=True, timeout=15,
+            [
+                imageio_ffmpeg.get_ffmpeg_exe(),
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=size=320x180:rate=60",
+                "-frames:v",
+                "1",
+                "-c:v",
+                "h264_nvenc",
+                "-preset",
+                "p4",
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            timeout=15,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
         return result.returncode == 0
@@ -28,9 +46,22 @@ def nvenc_available() -> bool:
 
 
 def encoder_arguments(width: int, height: int) -> tuple[str, list[str]]:
+    """Choose hardware encoding when available, otherwise CPU H.264."""
     if width >= 256 and height >= 128 and nvenc_available():
-        return "h264_nvenc", ["-c:v", "h264_nvenc", "-preset", "p4", "-tune", "ll",
-                              "-cq", "16", "-b:v", "0", "-bf", "0"]
+        return "h264_nvenc", [
+            "-c:v",
+            "h264_nvenc",
+            "-preset",
+            "p4",
+            "-tune",
+            "ll",
+            "-cq",
+            "16",
+            "-b:v",
+            "0",
+            "-bf",
+            "0",
+        ]
     return "libx264", ["-c:v", "libx264", "-preset", "fast", "-crf", "16"]
 
 
@@ -60,16 +91,39 @@ class VideoReader:
             self.close()
             raise ValueError("Video dimensions are invalid or exceed 4K.")
         if self.width >= 256 and self.height >= 128 and nvenc_available():
+            # Scale on the GPU before downloading BGR pixels; CPU decode is the fallback before frame zero.
             filters = "hwdownload,format=nv12,format=bgr24"
             if inference_width:
                 filters = f"scale_cuda={self.width}:{self.height}," + filters
             self.process = subprocess.Popen(
-                [imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-loglevel", "error",
-                 "-hwaccel", "cuda", "-hwaccel_output_format", "cuda",
-                 *(["-ss", str(start_seconds)] if start_seconds else []), "-i", str(path),
-                 "-map", "0:v:0", "-vf", filters, "-an", "-sn",
-                 "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "bgr24", "pipe:1"],
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                [
+                    imageio_ffmpeg.get_ffmpeg_exe(),
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-hwaccel",
+                    "cuda",
+                    "-hwaccel_output_format",
+                    "cuda",
+                    *(["-ss", str(start_seconds)] if start_seconds else []),
+                    "-i",
+                    str(path),
+                    "-map",
+                    "0:v:0",
+                    "-vf",
+                    filters,
+                    "-an",
+                    "-sn",
+                    "-fps_mode",
+                    "passthrough",
+                    "-f",
+                    "rawvideo",
+                    "-pix_fmt",
+                    "bgr24",
+                    "pipe:1",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
             try:
@@ -83,11 +137,30 @@ class VideoReader:
                 self._close_process()
         if inference_width and self.backend == "opencv-cpu" and self.source_width > self.width:
             self.process = subprocess.Popen(
-                [imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-loglevel", "error",
-                 *(["-ss", str(start_seconds)] if start_seconds else []), "-i", str(path),
-                 "-map", "0:v:0", "-vf", f"scale={self.width}:{self.height},format=bgr24", "-an", "-sn",
-                 "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "bgr24", "pipe:1"],
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                [
+                    imageio_ffmpeg.get_ffmpeg_exe(),
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    *(["-ss", str(start_seconds)] if start_seconds else []),
+                    "-i",
+                    str(path),
+                    "-map",
+                    "0:v:0",
+                    "-vf",
+                    f"scale={self.width}:{self.height},format=bgr24",
+                    "-an",
+                    "-sn",
+                    "-fps_mode",
+                    "passthrough",
+                    "-f",
+                    "rawvideo",
+                    "-pix_fmt",
+                    "bgr24",
+                    "pipe:1",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
             self.first_frame = self._read_gpu()
@@ -110,6 +183,7 @@ class VideoReader:
         return np.frombuffer(data, dtype=np.uint8).reshape(self.height, self.width, 3).copy()
 
     def read(self) -> tuple[bool, np.ndarray | None]:
+        """Read the next frame from the selected decode backend."""
         if self.first_frame is not None:
             frame, self.first_frame = self.first_frame, None
             return True, frame
@@ -135,5 +209,6 @@ class VideoReader:
             self.process = None
 
     def close(self) -> None:
+        """Release decoder processes and video capture handles."""
         self.capture.release()
         self._close_process()

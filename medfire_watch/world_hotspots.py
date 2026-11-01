@@ -35,7 +35,9 @@ def refresh_world_hotspots(path: Path = WORLD_PATH) -> dict:
         raise RuntimeError("NASA FIRMS global response did not contain the expected columns.")
     times = pd.to_datetime(
         frame["acq_date"].astype(str) + " " + frame["acq_time"].fillna("0").str.zfill(4),
-        format="%Y-%m-%d %H%M", errors="coerce", utc=True,
+        format="%Y-%m-%d %H%M",
+        errors="coerce",
+        utc=True,
     )
     now = datetime.now(timezone.utc)
     frame = frame.loc[(times >= now - timedelta(hours=24)) & (times <= now)].copy()
@@ -50,7 +52,8 @@ def refresh_world_hotspots(path: Path = WORLD_PATH) -> dict:
     frame["observation_utc"] = frame["observation_utc"].dt.strftime("%Y-%m-%dT%H:%M:%SZ")
     detections = [
         {
-            "latitude": float(row.latitude), "longitude": float(row.longitude),
+            "latitude": float(row.latitude),
+            "longitude": float(row.longitude),
             "frp": float(row.frp) if pd.notna(row.frp) else 0.0,
             "confidence": str(getattr(row, "confidence", "unknown")),
             "satellite": str(getattr(row, "satellite", "VIIRS SNPP")),
@@ -59,8 +62,10 @@ def refresh_world_hotspots(path: Path = WORLD_PATH) -> dict:
         for row in frame.itertuples(index=False)
     ]
     result = {
-        "updated_utc": now.isoformat(), "source": "NASA FIRMS VIIRS SNPP NRT",
-        "observations": int(len(frame)), "detections": detections,
+        "updated_utc": now.isoformat(),
+        "source": "NASA FIRMS VIIRS SNPP NRT",
+        "observations": int(len(frame)),
+        "detections": detections,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.part")
@@ -70,10 +75,12 @@ def refresh_world_hotspots(path: Path = WORLD_PATH) -> dict:
 
 
 def refresh_in_progress() -> bool:
+    """Report whether the satellite refresh lock is held."""
     return _LOCK.locked()
 
 
 def refresh_if_old() -> bool | None:
+    """Refresh expired observations while respecting the shared lock."""
     if not _LOCK.acquire(blocking=False):
         return
     try:
@@ -89,8 +96,10 @@ def refresh_if_old() -> bool | None:
 
 def load_world_hotspots(path: Path = WORLD_PATH) -> dict:
     """Filter legacy cached VIIRS low-confidence shorthand as well as new data."""
-    saved = json.loads(path.read_text(encoding='utf-8'))
-    if 'detections' in saved:
-        saved['detections'] = [d for d in saved['detections'] if str(d.get('confidence', '')).lower() not in {'l', 'low'}]
-        saved['observations'] = len(saved['detections'])
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    if "detections" in saved:
+        saved["detections"] = [
+            d for d in saved["detections"] if str(d.get("confidence", "")).lower() not in {"l", "low"}
+        ]
+        saved["observations"] = len(saved["detections"])
     return saved

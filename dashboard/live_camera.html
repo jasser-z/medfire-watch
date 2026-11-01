@@ -1,23 +1,157 @@
-<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>MedFire Live camera</title>
-<style>
-:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#07101b;color:#edf5fa;font:14px system-ui}.shell{max-width:1280px;margin:auto;padding:12px}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}.eyebrow{font-size:11px;letter-spacing:.18em;color:#ffbd89}h1{font-size:20px;margin:4px 0}.stage{position:relative;aspect-ratio:16/9;background:#02070c;border:1px solid #7896aa55;border-radius:16px;overflow:hidden;box-shadow:0 18px 48px #0008}video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}canvas{pointer-events:none}.status{display:flex;gap:12px;flex-wrap:wrap;color:#b9cddb;margin-top:10px}.chip{background:#102535;border:1px solid #7896aa55;border-radius:99px;padding:7px 10px;font-size:12px}button{background:#ffad75;color:#1c2730;border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}#notice{color:#ffcf9e}.debug{margin-top:9px;padding:10px;background:#04111d;border:1px solid #7896aa55;border-radius:8px;font:12px ui-monospace,monospace;white-space:pre-wrap}@media(max-width:600px){.shell{padding:8px}.head{align-items:flex-start;flex-direction:column}.stage{border-radius:9px}}
-</style></head><body><main class="shell"><div class="head"><div><div class="eyebrow">LIVE CAMERA · FULL QUALITY DISPLAY</div><h1>Fire and smoke watch</h1></div><button id="start">Start camera</button></div><div class="stage"><video id="video" playsinline muted></video><canvas id="overlay"></canvas></div><div class="status"><span class="chip" id="track">Camera not started</span><span class="chip" id="detect">Detection waiting</span><span class="chip" id="alert">Alerts 0 delivered · 0 failed</span><span id="notice"></span></div><pre class="debug" id="debug" hidden></pre></main><script type="module">
-import {sourceDetections} from '/live-camera/coordinates.mjs';
-const video=document.querySelector('#video'),overlay=document.querySelector('#overlay'),ctx=overlay.getContext('2d'),$=s=>document.querySelector(s);let running=false,latest=[],sent=0,drawFps=0,drawTicks=[],lastDetect=0,debug=new URLSearchParams(location.search).has('debug');$('#debug').hidden=!debug;
-function fit(){const r=video.getBoundingClientRect(),d=devicePixelRatio||1;overlay.width=Math.round(r.width*d);overlay.height=Math.round(r.height*d);ctx.setTransform(d,0,0,d,0,0)}
-function draw(){if(!running)return;fit();const r=video.getBoundingClientRect(),vw=video.videoWidth,vh=video.videoHeight,scale=Math.min(r.width/vw,r.height/vh),ox=(r.width-vw*scale)/2,oy=(r.height-vh*scale)/2;ctx.clearRect(0,0,r.width,r.height);ctx.lineWidth=2;ctx.font='13px system-ui';for(const d of latest){const [x1,y1,x2,y2]=d.xyxy;ctx.strokeStyle=d.class==='fire'?'#ff684d':'#ffc261';ctx.fillStyle=ctx.strokeStyle;ctx.strokeRect(ox+x1*scale,oy+y1*scale,(x2-x1)*scale,(y2-y1)*scale);ctx.fillText(d.class+' '+Math.round(d.confidence*100)+'%',ox+x1*scale+3,oy+y1*scale+15)}const now=performance.now();drawTicks.push(now);while(drawTicks[0]<now-1000)drawTicks.shift();drawFps=drawTicks.length;if(debug)$('#debug').textContent=JSON.stringify({track:video.srcObject?.getVideoTracks()[0]?.getSettings(),drawFps,boxes:latest.length},null,2);video.requestVideoFrameCallback?.(()=>draw())||requestAnimationFrame(draw)}
-async function detect(){
-if(!running||video.readyState<2){setTimeout(detect,120);return}const now=performance.now();if(now-lastDetect<140){setTimeout(detect,20);return}lastDetect=now;
-// Retain the exact source frame. Both detector copy and alert photo come from it.
-const full=document.createElement('canvas');full.width=video.videoWidth;full.height=video.videoHeight;full.getContext('2d').drawImage(video,0,0);
-const scale=Math.min(960/full.width,1),can=document.createElement('canvas');can.width=Math.max(1,Math.round(full.width*scale));can.height=Math.max(1,Math.round(full.height*scale));can.getContext('2d').drawImage(full,0,0,can.width,can.height);
-const blob=await new Promise(ok=>can.toBlob(ok,'image/jpeg',.88));try{const started=performance.now(),form=new FormData();form.append('image',blob,'detector.jpg');const r=await fetch('/live-camera/detect',{method:'POST',body:form});const data=await r.json();if(!r.ok)throw Error(data.detail||'Detector failed');latest=sourceDetections(data,full.width,full.height);$('#detect').textContent='Detection '+data.updates_per_second+'/s · '+Math.round(performance.now()-started)+' ms · '+latest.length+' boxes';if(data.alert_id)await snapshot(data.alert_id,full)}catch(e){latest=[];$('#notice').textContent='Detection unavailable: '+e.message}setTimeout(detect,0)}
-async function snapshot(alertId,full){const blob=await new Promise(ok=>full.toBlob(ok,'image/jpeg',.94));const form=new FormData();form.append('image',blob,'live-camera-full.jpg');const r=await fetch('/live-camera/alert/'+alertId,{method:'POST',body:form});if(r.ok){sent++;$('#notice').textContent='Full-resolution alert photo queued for Telegram.'}else{$('#notice').textContent='Alert photo could not be queued.'}}
-async function status(){if(running)try{const data=await fetch('/live-camera/status').then(r=>r.json());$('#alert').textContent='Alerts '+data.delivered+' delivered · '+data.failed+' failed';if(data.last_error)$('#notice').textContent=data.last_error}catch{}setTimeout(status,1000)}
-$('#start').onclick=async()=>{try{const stream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30}},audio:false});video.srcObject=stream;await video.play();running=true;const set=stream.getVideoTracks()[0].getSettings();$('#track').textContent='Negotiated '+set.width+'×'+set.height+' @ '+(set.frameRate||'?')+' fps';$('#start').disabled=true;draw();detect();status()}catch(e){$('#notice').textContent='Camera permission or start failed: '+e.name}};
-const cameraStage=document.querySelector('.stage'),cameraHud=document.querySelector('.status');cameraStage.append(cameraHud);
-const fullscreenButton=document.createElement('button');fullscreenButton.textContent='Fullscreen';fullscreenButton.className='fullscreen-button';cameraStage.append(fullscreenButton);
-async function toggleCameraFullscreen(){try{if(document.fullscreenElement)await document.exitFullscreen();else await cameraStage.requestFullscreen()}catch(e){$('#notice').textContent='Fullscreen unavailable: '+e.name}}
-fullscreenButton.onclick=toggleCameraFullscreen;cameraStage.ondblclick=toggleCameraFullscreen;
-document.addEventListener('fullscreenchange',()=>{fullscreenButton.textContent=document.fullscreenElement?'Exit fullscreen':'Fullscreen';fit()});
-</script><style>.stage .status{position:absolute;bottom:12px;left:12px;right:12px;z-index:3;pointer-events:none}.stage .chip{background:#071523e8}.fullscreen-button{position:absolute;right:12px;top:12px;z-index:4;touch-action:manipulation}.stage:fullscreen{width:100vw;height:100dvh;aspect-ratio:auto;border:0;border-radius:0;background:#000}</style></body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>MedFire Live camera</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #07101b;
+        color: #edf5fa;
+        font: 14px system-ui;
+      }
+      .shell {
+        max-width: 1280px;
+        margin: auto;
+        padding: 12px;
+      }
+      .head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+      .eyebrow {
+        font-size: 11px;
+        letter-spacing: 0.18em;
+        color: #ffbd89;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 4px 0;
+      }
+      .stage {
+        position: relative;
+        aspect-ratio: 16/9;
+        background: #02070c;
+        border: 1px solid #7896aa55;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 18px 48px #0008;
+      }
+      video,
+      canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      canvas {
+        pointer-events: none;
+      }
+      .status {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        color: #b9cddb;
+        margin-top: 10px;
+      }
+      .chip {
+        background: #102535;
+        border: 1px solid #7896aa55;
+        border-radius: 99px;
+        padding: 7px 10px;
+        font-size: 12px;
+      }
+      button {
+        background: #ffad75;
+        color: #1c2730;
+        border: 0;
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      #notice {
+        color: #ffcf9e;
+      }
+      .debug {
+        margin-top: 9px;
+        padding: 10px;
+        background: #04111d;
+        border: 1px solid #7896aa55;
+        border-radius: 8px;
+        font:
+          12px ui-monospace,
+          monospace;
+        white-space: pre-wrap;
+      }
+      @media (max-width: 600px) {
+        .shell {
+          padding: 8px;
+        }
+        .head {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .stage {
+          border-radius: 9px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <div class="head">
+        <div>
+          <div class="eyebrow">LIVE CAMERA · FULL QUALITY DISPLAY</div>
+          <h1>Fire and smoke watch</h1>
+        </div>
+        <button id="start">Start camera</button>
+      </div>
+      <div class="stage"><video id="video" playsinline muted></video><canvas id="overlay"></canvas></div>
+      <div class="status">
+        <span class="chip" id="track">Camera not started</span><span class="chip" id="detect">Detection waiting</span
+        ><span class="chip" id="alert">Alerts 0 delivered · 0 failed</span><span id="notice"></span>
+      </div>
+      <pre class="debug" id="debug" hidden></pre>
+    </main>
+    <script type="module" src="/live-camera/app.mjs"></script>
+    <style>
+      .stage .status {
+        position: absolute;
+        bottom: 12px;
+        left: 12px;
+        right: 12px;
+        z-index: 3;
+        pointer-events: none;
+      }
+      .stage .chip {
+        background: #071523e8;
+      }
+      .fullscreen-button {
+        position: absolute;
+        right: 12px;
+        top: 12px;
+        z-index: 4;
+        touch-action: manipulation;
+      }
+      .stage:fullscreen {
+        width: 100vw;
+        height: 100dvh;
+        aspect-ratio: auto;
+        border: 0;
+        border-radius: 0;
+        background: #000;
+      }
+    </style>
+  </body>
+</html>

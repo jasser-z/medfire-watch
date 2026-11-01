@@ -15,11 +15,7 @@ UNIFIED_NAMES = ["fire", "smoke"]
 
 
 def _image_files(directory: Path) -> list[Path]:
-    return sorted(
-        path
-        for path in directory.rglob("*")
-        if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
-    )
+    return sorted(path for path in directory.rglob("*") if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS)
 
 
 def _find_split(data_root: Path, split: str) -> tuple[Path, Path]:
@@ -83,9 +79,7 @@ def _validate_official_splits(
         )
     leakage = (split_names["train"] | split_names["val"]) & official_test
     if leakage:
-        raise ValueError(
-            f"Official test leakage found in Kaggle train/val ({len(leakage)} images); refusing merge."
-        )
+        raise ValueError(f"Official test leakage found in Kaggle train/val ({len(leakage)} images); refusing merge.")
     return {
         "official_train_images": len(official_train),
         "official_test_images": len(official_test),
@@ -106,10 +100,7 @@ def _class_mapping(metadata_path: Path) -> tuple[dict[int, int], dict[str, int]]
     normalized = [str(name).strip().casefold() for name in names]
     if set(normalized) != {"fire", "smoke"}:
         raise ValueError(f"Expected D-Fire class names fire/smoke, found {names!r}.")
-    source_to_unified = {
-        source_id: UNIFIED_NAMES.index(name)
-        for source_id, name in enumerate(normalized)
-    }
+    source_to_unified = {source_id: UNIFIED_NAMES.index(name) for source_id, name in enumerate(normalized)}
     return source_to_unified, {name: index for index, name in enumerate(normalized)}
 
 
@@ -287,6 +278,7 @@ def build_merged_detection_dataset(
     official_test_list: Path,
     output_root: Path,
 ) -> dict[str, Any]:
+    """Build source splits with class mapping and leakage checks."""
     if output_root.exists():
         raise FileExistsError(f"Refusing to overwrite existing merged dataset: {output_root}")
     pyro_root = pyro_root.resolve()
@@ -295,17 +287,12 @@ def build_merged_detection_dataset(
     split_audit = _validate_official_splits(source_data_root, official_train_list, official_test_list)
     source_to_unified, source_names = _class_mapping(dfire_root / "data.yaml")
 
-    pyro_splits = {
-        split: _validated_pair_paths(pyro_root, split)
-        for split in ("train", "val")
-    }
+    pyro_splits = {split: _validated_pair_paths(pyro_root, split) for split in ("train", "val")}
     if any(not paths[2] for paths in pyro_splits.values()):
         raise ValueError("Pyro-SDIS train and val splits must both contain images.")
 
     output_root.parent.mkdir(parents=True, exist_ok=True)
-    staging_root = Path(
-        tempfile.mkdtemp(prefix=f".{output_root.name}-staging-", dir=output_root.parent)
-    )
+    staging_root = Path(tempfile.mkdtemp(prefix=f".{output_root.name}-staging-", dir=output_root.parent))
     dropped_rows: list[dict[str, str | int]] = []
     try:
         counts: dict[str, dict[str, Any]] = {

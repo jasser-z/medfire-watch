@@ -4,13 +4,13 @@ import base64
 from io import BytesIO
 from pathlib import Path
 
-import api.main as api_module
+import api.services as api_module
 import cv2
 import numpy as np
 import pytest
 from alerts.manager import AlertManager
-from api.main import (
-    app,
+from api.main import app
+from api.services import (
     get_alert_manager,
     get_detection_service,
 )
@@ -27,9 +27,7 @@ class FakeDetectionService:
     def predict(self, image: np.ndarray) -> dict[str, object]:
         assert image.shape == (12, 16, 3)
         return {
-            "detections": [
-                {"class": "fire", "confidence": 0.8, "xyxy": [1.0, 2.0, 8.0, 9.0]}
-            ],
+            "detections": [{"class": "fire", "confidence": 0.8, "xyxy": [1.0, 2.0, 8.0, 9.0]}],
             "speed_ms": {"inference": 5.0},
             "device": "cpu",
             "confidence_threshold": self.confidence_threshold,
@@ -44,10 +42,6 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
-
-
-
-
 
 
 def test_detect_accepts_valid_image_and_rejects_unsupported_type(client: TestClient) -> None:
@@ -76,8 +70,6 @@ def test_detect_accepts_valid_image_and_rejects_unsupported_type(client: TestCli
     assert unreadable.status_code == 400
 
 
-
-
 def test_current_video_flow_keeps_source_detections_and_all_export_frames(client: TestClient, tmp_path: Path) -> None:
     import time
 
@@ -88,9 +80,7 @@ def test_current_video_flow_keeps_source_detections_and_all_export_frames(client
     for _ in range(5):
         writer.write(np.zeros((12, 16, 3), dtype=np.uint8))
     writer.release()
-    response = client.post(
-        "/video-inputs", files={"video": ("live.mp4", video_path.read_bytes(), "video/mp4")}
-    )
+    response = client.post("/video-inputs", files={"video": ("live.mp4", video_path.read_bytes(), "video/mp4")})
     assert response.status_code == 200
     job_id = response.json()["input_id"]
     deadline = time.monotonic() + 30
@@ -134,7 +124,9 @@ def test_telegram_sender_records_only_confirmed_delivery(
 
 
 def test_prepared_video_starts_without_upload_and_reuses_initial_predictions(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import time
 
@@ -179,10 +171,15 @@ def test_prepared_video_starts_without_upload_and_reuses_initial_predictions(
 
 
 def test_retired_video_and_regional_alert_routes_are_absent(client):
-    paths = client.get('/openapi.json').json()['paths']
-    retired = ['/detect-video', '/alerts/settings', '/video-jobs/{video_id}/live',
-               '/videos/{video_id}/previews/{preview_index}', '/video-jobs/{video_id}/player']
+    paths = client.get("/openapi.json").json()["paths"]
+    retired = [
+        "/detect-video",
+        "/alerts/settings",
+        "/video-jobs/{video_id}/live",
+        "/videos/{video_id}/previews/{preview_index}",
+        "/video-jobs/{video_id}/player",
+    ]
     for path in retired:
         assert path not in paths
-    assert '/video-jobs' not in paths
-    assert 'settings' not in client.get('/alerts').json()
+    assert "/video-jobs" not in paths
+    assert "settings" not in client.get("/alerts").json()

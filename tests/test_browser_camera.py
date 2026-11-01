@@ -38,20 +38,24 @@ def test_browser_camera_requires_persistent_overlapping_detection_before_snapsho
 
 def test_full_resolution_photo_scales_pending_detector_coordinates_without_mutation(monkeypatch):
     monitor = BrowserCameraMonitor()
-    detection = {'class': 'fire', 'confidence': .9, 'xyxy': [300, 150, 600, 450]}
-    monitor._pending['event'] = {'detections': [detection], 'alert': {'detection': detection},
-                                 'image_width': 960, 'image_height': 540}
+    detection = {"class": "fire", "confidence": 0.9, "xyxy": [300, 150, 600, 450]}
+    monitor._pending["event"] = {
+        "detections": [detection],
+        "alert": {"detection": detection},
+        "image_width": 960,
+        "image_height": 540,
+    }
     queued = []
-    monkeypatch.setattr(monitor._queue, 'put_nowait', queued.append)
-    assert monitor.submit_full_resolution_snapshot('event', np.zeros((720, 1280, 3), dtype=np.uint8))
+    monkeypatch.setattr(monitor._queue, "put_nowait", queued.append)
+    assert monitor.submit_full_resolution_snapshot("event", np.zeros((720, 1280, 3), dtype=np.uint8))
     image, boxes, alert = queued[0]
     assert image.shape == (720, 1280, 3)
-    assert boxes[0]['xyxy'] == [400, 200, 800, 600]
-    assert alert['detection']['xyxy'] == [400, 200, 800, 600]
-    assert detection['xyxy'] == [300, 150, 600, 450]
+    assert boxes[0]["xyxy"] == [400, 200, 800, 600]
+    assert alert["detection"]["xyxy"] == [400, 200, 800, 600]
+    assert detection["xyxy"] == [300, 150, 600, 450]
 
 
 def test_response_declares_submitted_image_coordinate_space():
     result = BrowserCameraMonitor().process(np.zeros((540, 960, 3), dtype=np.uint8), _Detector())
-    assert (result['image_width'], result['image_height']) == (960, 540)
-    assert result['coordinate_space'] == 'submitted_image_pixels'
+    assert (result["image_width"], result["image_height"]) == (960, 540)
+    assert result["coordinate_space"] == "submitted_image_pixels"

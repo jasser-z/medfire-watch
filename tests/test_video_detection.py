@@ -44,9 +44,7 @@ def test_video_processor_writes_annotated_video_and_reports_alert(tmp_path: Path
 
     def fake_inference(frame: np.ndarray) -> dict[str, object]:
         return {
-            "detections": [
-                {"class": "smoke", "confidence": 0.9, "xyxy": [5, 6, 30, 35]}
-            ],
+            "detections": [{"class": "smoke", "confidence": 0.9, "xyxy": [5, 6, 30, 35]}],
             "speed_ms": {},
             "device": "cpu",
             "confidence_threshold": 0.3,
