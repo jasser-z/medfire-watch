@@ -9,3 +9,7 @@ The deployed fire/smoke detector remains unchanged in models/detection. The depl
 The map uses NASA satellite observations, official Copernicus/GWIS fire-weather forecasts and Open-Meteo local forecast context. It has no locally trained ignition model or vegetation-baseline feature. A weather-danger class is not the probability that a new fire starts; a satellite heat detection is not a confirmed wildfire.
 
 The dated satellite background, place labels and 3D buildings are cartography. Forecast resolution is limited by the source rather than map zoom.
+
+## Saved confusion matrix provenance
+
+The retained official-test PR curve reports mean AP50 0.747. The saved confusion matrix includes substantial unmatched/background detections; its confidence/matching settings were not stored alongside that PNG. Its raw counts must not be presented as precision/recall at the deployment threshold or as the current persistence-based camera alert performance. The project retains the plot for transparency and does not derive a new metric from it. Fresh evaluation would require restoring the original data and an explicit evaluation protocol.

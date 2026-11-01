@@ -142,6 +142,37 @@ These are retained evaluation results, not a new evaluation or a guarantee of de
 
 The D-Fire test report contains **4,306 images**. Detector confidence was selected using validation data; the current drawing threshold is about **0.298**. Camera alerting uses the stricter rules described above. See the [full metrics](docs/results/detection_final_metrics.json), [model card](docs/MODEL_CARD.md) and [performance notes](docs/VIDEO_BENCHMARK.md).
 
+### Evaluation charts
+
+The following are retained plots from the recorded evaluations, not screenshots of live incidents or newly generated accuracy results.
+
+**D-Fire official held-out test — precision–recall curve**
+
+![D-Fire held-out test precision–recall curve: fire AP50 0.694, smoke AP50 0.801, mean AP50 0.747](docs/results/dfire_official_test_PR_curve.png)
+
+Precision–recall curves show the trade-off as the detector confidence threshold changes. The blue aggregate curve reports **mAP50 = 0.747**, not classification accuracy or the probability that an alert is correct.
+
+<details>
+<summary>View the saved test confusion matrix and validation curves</summary>
+
+**D-Fire official test — saved confusion matrix**
+
+![Saved D-Fire test confusion matrix with predicted classes on rows and true classes on columns](docs/results/dfire_official_test_confusion_matrix.png)
+
+Rows are predictions and columns are reference labels. Background entries represent unmatched detections or missed objects. The saved matrix contains substantial background errors. Its exact operating settings are not recorded alongside the plot, so these raw counts should not be treated as the table's precision/recall or the performance of the current camera persistence/alert rules. No new metric has been derived from this image.
+
+**D-Fire validation — precision–recall curve**
+
+![D-Fire validation precision–recall curve](docs/results/dfire_validation_PR_curve.png)
+
+**Pyro-SDIS validation — smoke precision–recall curve**
+
+![Pyro-SDIS smoke validation precision–recall curve](docs/results/pyro_sdis_validation_PR_curve.png)
+
+Validation results are separate from the held-out test. These charts and the JSON reports are retained as evaluation evidence; they do not establish field performance on every camera or weather condition.
+
+</details>
+
 ### Optional retraining
 
 Retraining is separate from running the app and requires downloading datasets again:
@@ -284,6 +315,14 @@ Le détecteur YOLOv8s distingue **fire** et **smoke**. Les sources d’entraîne
 | Test officiel D-Fire, 4 306 images | 0,740 | 0,681 | 0,747 | 0,419 |
 | Validation D-Fire | 0,749 | 0,669 | 0,747 | 0,434 |
 | Validation Pyro-SDIS, fumée uniquement | 0,766 | 0,671 | 0,733 | 0,398 |
+
+### Courbes d’évaluation
+
+**D-Fire, test officiel indépendant :**
+
+![Courbe précision-rappel du test officiel D-Fire, mAP50 0,747](docs/results/dfire_official_test_PR_curve.png)
+
+La mAP50 n’est ni une exactitude de classification ni la probabilité qu’une alerte soit correcte. Les autres courbes et la matrice enregistrée sont disponibles dans la [section anglaise](#evaluation-charts). La matrice comporte de nombreuses erreurs de fond ; ses réglages exacts ne sont pas fournis avec l’image. Ses comptes ne représentent donc pas les performances des règles d’alerte caméra actuelles.
 
 Ces résultats proviennent des rapports conservés ; aucune nouvelle évaluation n’est revendiquée. Voir [les métriques](docs/results/detection_final_metrics.json), [les données](docs/DATA.md) et [le modèle](docs/MODEL_CARD.md). Le seuil du détecteur a été choisi sur validation, sans ajustement sur le test final.
 
