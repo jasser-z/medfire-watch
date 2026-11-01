@@ -40,10 +40,9 @@ Sources: [split metrics](docs/results/detection_final_metrics.json),
 | --- | --- |
 | ![Fire danger](docs/screenshots/fire-danger.png) | ![Annotated image](docs/screenshots/image-inspector.png) |
 | ![Real NASA heat observations](docs/screenshots/satellite-detections.png) | ![Video studio](docs/screenshots/video-studio.png) |
-| ![Tunis in 3D](docs/screenshots/map-tunis.png) | ![Marseille in 3D](docs/screenshots/map-marseille.png) |
 | ![Simulated camera detection](docs/screenshots/live-camera.png) | ![Recorded Telegram alert](docs/screenshots/alerts.png) |
 
-Satellite points show actual NASA observations. The city close-ups demonstrate cartography and 3D buildings.
+Satellite points show actual NASA observations. The Earth-to-city GIF above demonstrates 3D buildings.
 
 The Alerts showcase includes the author's Telegram photo alert from 27 October 2026.
 
