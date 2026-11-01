@@ -11,7 +11,9 @@ Satellite and weather awareness with local camera, image and video fire/smoke de
 ![Python 3.11](https://img.shields.io/badge/Python-3.11-blue)
 [![AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue)](LICENSE)
 
-![Video detection demonstration](docs/media/demo.gif)
+| Live prediction | Earth zoom and 3D city |
+| --- | --- |
+| ![Live prediction](docs/media/demo.gif) | ![Earth-to-city zoom and 3D buildings](docs/media/earth-zoom.gif) |
 
 ## Key results
 
@@ -37,9 +39,15 @@ Sources: [split metrics](docs/results/detection_final_metrics.json),
 | Fire danger | Image inspector |
 | --- | --- |
 | ![Fire danger](docs/screenshots/fire-danger.png) | ![Annotated image](docs/screenshots/image-inspector.png) |
-| ![Tunis](docs/screenshots/map-tunis.png) | ![Marseille](docs/screenshots/map-marseille.png) |
-| ![Video studio](docs/screenshots/video-studio.png) | ![Simulated camera](docs/screenshots/live-camera.png) |
-| ![Alerts with delivery disabled](docs/screenshots/alerts.png) | |
+| ![Real NASA heat observations](docs/screenshots/satellite-detections.png) | ![Video studio](docs/screenshots/video-studio.png) |
+| ![Tunis in 3D](docs/screenshots/map-tunis.png) | ![Marseille in 3D](docs/screenshots/map-marseille.png) |
+| ![Simulated camera detection](docs/screenshots/live-camera.png) | ![Alerts connection setup](docs/screenshots/alerts.png) |
+
+Satellite points show actual NASA observations. The city close-ups demonstrate cartography and 3D buildings.
+
+![Author-supplied Telegram photo alert](docs/screenshots/telegram-alert.png)
+
+Telegram photo alert supplied by the author, captured on 27 October 2026.
 
 [Media sources and capture status](docs/media/CREDITS.md)
 

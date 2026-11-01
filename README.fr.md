@@ -11,7 +11,9 @@ Observation satellite et météo, avec détection locale du feu et de la fumée 
 ![Python 3.11](https://img.shields.io/badge/Python-3.11-blue)
 [![AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue)](LICENSE)
 
-![Démonstration de détection vidéo](docs/media/demo.gif)
+| Prédiction en direct | Du globe à la ville en 3D |
+| --- | --- |
+| ![Prédiction en direct](docs/media/demo.gif) | ![Zoom sur la Terre et bâtiments en 3D](docs/media/earth-zoom.gif) |
 
 ## Résultats clés
 
@@ -37,9 +39,15 @@ Sources : [métriques](docs/results/detection_final_metrics.json),
 | Danger incendie | Inspection d'image |
 | --- | --- |
 | ![Carte](docs/screenshots/fire-danger.png) | ![Inspection](docs/screenshots/image-inspector.png) |
-| ![Tunis](docs/screenshots/map-tunis.png) | ![Marseille](docs/screenshots/map-marseille.png) |
-| ![Studio vidéo](docs/screenshots/video-studio.png) | ![Caméra simulée](docs/screenshots/live-camera.png) |
-| ![Alertes sans envoi Telegram](docs/screenshots/alerts.png) | |
+| ![Observations NASA réelles](docs/screenshots/satellite-detections.png) | ![Studio vidéo](docs/screenshots/video-studio.png) |
+| ![Tunis en 3D](docs/screenshots/map-tunis.png) | ![Marseille en 3D](docs/screenshots/map-marseille.png) |
+| ![Détection par caméra simulée](docs/screenshots/live-camera.png) | ![Configuration des alertes](docs/screenshots/alerts.png) |
+
+Les points satellite sont des observations NASA réelles. Les gros plans urbains présentent la cartographie et les bâtiments 3D.
+
+![Alerte photo Telegram fournie par l'auteur](docs/screenshots/telegram-alert.png)
+
+Alerte photo Telegram fournie par l'auteur, capturée le 27 octobre 2026.
 
 [Sources des médias](docs/media/CREDITS.md)
 

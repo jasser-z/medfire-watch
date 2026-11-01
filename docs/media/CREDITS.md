@@ -36,20 +36,36 @@ python scripts/capture_media.py --video path/to/cleared-fire-clip.mp4
 
 The script uses 1440×900 headless Chromium, separate local service ports, isolated alert
 history, empty Telegram credentials and Chromium's fake-video-capture flag. It captures
-real detector outputs. The Alerts view documents local attempts with delivery disabled.
+real detector outputs. The Alerts view shows connection setup with an empty isolated history;
+it does not claim a successful Telegram delivery. Camera screenshots precede delivery attempts.
 Streamlit's supported `client.toolbarMode` and `ui.hideTopBar` settings hide toolbar controls.
-The GIF derives from the final 20 seconds of a Playwright recording, without source audio.
+Both GIFs derive from 20-second Playwright recordings, without source audio.
+The map recording uses a capture-only JavaScript export to control the existing MapLibre camera;
+provider data, geometry and application styling are real and unmodified.
+The populated feed's empty-state message is checked using Chromium's computed styles.
+City captures must contain rendered buildings with a camera pitch of at least 50 degrees.
 
 ## Capture inventory
 
-All seven PNG captures are 1440×900: `fire-danger.png`, `map-tunis.png`, `map-marseille.png`,
-`image-inspector.png`, `video-studio.png`, `live-camera.png` and `alerts.png` under
+All eight PNG captures are 1440×900: `fire-danger.png`, `satellite-detections.png`, `map-tunis.png`,
+`map-marseille.png`, `image-inspector.png`, `video-studio.png`, `live-camera.png` and `alerts.png` under
 `docs/screenshots/`. The camera uses a recorded stream, not a physical camera.
-`demo.gif` is 20 seconds, 640×400, 5 fps, and 6,023,955 bytes (below 8 MB).
+`demo.gif` shows live prediction; `earth-zoom.gif` shows the globe-to-Marseille approach and a 3D orbit.
+Each is 20 seconds at 6 fps, below 8 MB. The encoder chooses 640, 560 or 480 pixels
+in width to meet the size limit while preserving the full browser viewport's aspect ratio.
 The capture source uses NASA's medium-resolution rendition. Annotations are actual model predictions.
+
+| GIF | Dimensions | Duration | Bytes |
+| --- | --- | --- | --- |
+| `demo.gif` | 640×400 | 20 seconds | 6,989,315 |
+| `earth-zoom.gif` | 480×300 | 20 seconds | 7,234,775 |
 
 ## Author contribution
 
-A phone screenshot of an actual Telegram photo alert is still required. Blur personal names,
-chat identifiers and notifications. Physical-webcam acceptance and real Telegram delivery
-are separate from the synthetic-camera demonstration.
+`docs/screenshots/telegram-alert.png` is the Telegram screenshot supplied by Jasser Zormati.
+It is included as supplied: the medfire-watch bot and annotated photo are visible, without
+personal names, chat identifiers or phone notifications. The message timestamp is
+2026-10-27T23:42:04+01:00, and the caption reports smoke confidence of 73%.
+This screenshot documents a historical delivery separately from the automated capture run.
+The underlying footage source has not been supplied; its attribution remains to be confirmed.
+Physical-webcam acceptance is separate from the synthetic-camera demonstration.
