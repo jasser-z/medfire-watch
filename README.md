@@ -13,7 +13,7 @@ Satellite and weather awareness with local camera, image and video fire/smoke de
 
 | Live prediction | Earth zoom and 3D city |
 | --- | --- |
-| ![Live prediction](docs/media/demo.gif) | ![Earth-to-city zoom and 3D buildings](docs/media/earth-zoom.gif) |
+| ![Live prediction](docs/media/demo.gif) | ![Earth-to-city zoom and 3D buildings](docs/media/earth-weather-3d.gif) |
 
 ## Key results
 

@@ -106,6 +106,83 @@ def encode_gif(ffmpeg: str, video: Path, target: Path, duration: int = 20) -> No
     raise RuntimeError(f"{target.name} exceeds 8 MB.")
 
 
+def capture_weather_journey(context: Any, api: str, work: Path, ffmpeg: str) -> None:
+    """Capture settled map frames so network waits cannot enter the final 12 fps animation."""
+    page = context.new_page()
+    page.goto(api + "/world-map?capture=weather-journey")
+    page.wait_for_selector(".maplibregl-canvas")
+    page.wait_for_timeout(8000)
+    page.wait_for_function(
+        """async () => {
+          const {captureMap:m} = await import(document.querySelector('script[type=module]').src);
+          return !!m?.getLayer('fire-weather') && m.getLayoutProperty('fire-weather','visibility') !== 'none';
+        }""",
+        timeout=60000,
+    )
+    page.locator("#map-controls").evaluate("element => { element.open = true; }")
+    page.get_by_label("Weather danger areas", exact=False).check()
+    open_credits(page)
+    frames = Path(tempfile.mkdtemp(prefix="settled-frames-", dir=work))
+    for index in range(240):
+        if index < 24:
+            camera = {"center": [10 + index * 0.3, 30], "zoom": 1.3, "pitch": 0, "bearing": 0}
+        elif index < 120:
+            t = (index - 24) / 95
+            zoom = 1.3 + 14.4 * t
+            camera = {
+                "center": [5.3672 + 11.5328 * (1 - t) ** 5, 43.3114 - 13.3114 * (1 - t) ** 5],
+                "zoom": zoom,
+                "pitch": max(0, (zoom - 13.8) / 1.9) * 50,
+                "bearing": -25 * t,
+            }
+        elif index < 168:
+            camera = {"center": [5.3672, 43.3114], "zoom": 15.7, "pitch": 50, "bearing": -25 + 60 * (index - 120) / 47}
+        else:
+            camera = {"center": [5.3672, 43.3114], "zoom": 15.7, "pitch": 50, "bearing": 35}
+        if index == 36:
+            page.locator("#map-controls").evaluate("element => { element.open = false; }")
+        map_action(page, "camera", camera)
+        # Let the camera update source coverage before checking provider requests.
+        page.wait_for_timeout(100)
+        page.wait_for_function(
+            """async () => {
+              const {captureMap:m} = await import(document.querySelector('script[type=module]').src);
+              return m.areTilesLoaded() && m.isStyleLoaded();
+            }""",
+            timeout=60000,
+        )
+        await_render = "() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+        page.evaluate(await_render)
+        page.screenshot(path=str(frames / f"{index:04d}.png"))
+        if index % 24 == 0:
+            print(f"Settled weather/3D frame {index}/240", flush=True)
+    page.close()
+    target = ROOT / "docs/media/earth-weather-3d.gif"
+    for width, colours in [(480, 128), (440, 96), (400, 96), (360, 96)]:
+        subprocess.run(
+            [
+                ffmpeg,
+                "-y",
+                "-framerate",
+                "12",
+                "-i",
+                str(frames / "%04d.png"),
+                "-filter_complex",
+                f"scale={width}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors={colours}:"
+                "reserve_transparent=0[p];[b][p]paletteuse=dither=none",
+                "-loop",
+                "0",
+                str(target),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        if target.stat().st_size < 8_000_000:
+            break
+    assert target.stat().st_size < 8_000_000
+    print("Weather-colour journey encoded at 12 fps from fully loaded PNG frames", flush=True)
+
+
 def capture_maps(context: Any, api: str, output: Path, work: Path, ffmpeg: str) -> dict:
     """Capture real observations, city buildings and a globe-to-city camera journey."""
     page = context.new_page()
@@ -159,34 +236,8 @@ def capture_maps(context: Any, api: str, output: Path, work: Path, ffmpeg: str) 
 
     page.locator("#map-controls summary").click()
     (work / "map-checks.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
-    # Warm the target's real map tiles before recording the approach, then return to the globe.
-    camera = CITIES["marseille"]
-    for zoom in [4, 7, 10, 12, 14, camera["zoom"]]:
-        map_action(page, "camera", {"center": camera["center"], "zoom": zoom, "pitch": 0, "bearing": -25})
-        page.wait_for_function(
-            """async () => {
-              const {captureMap} = await import(document.querySelector('script[type=module]').src);
-              return captureMap.areTilesLoaded();
-            }""",
-            timeout=30000,
-        )
-        page.wait_for_timeout(500)
-    map_action(page, "camera", {"center": [10, 30], "zoom": 1.3, "pitch": 0, "bearing": 0})
-    page.wait_for_timeout(4000)
-    recording = page.video
-    map_action(page, "orbit", {"center": [25, 30], "zoom": 1.5, "duration": 3000})
-    page.wait_for_timeout(3000)
-    map_action(page, "fly", {**camera, "pitch": 0, "duration": 10000, "curve": 1.25})
-    page.wait_for_timeout(10000)
-    map_action(page, "orbit", {"pitch": 60, "duration": 2000})
-    page.wait_for_timeout(2000)
-    map_action(page, "orbit", {"bearing": 35, "duration": 4000})
-    page.wait_for_timeout(4000)
-    page.wait_for_timeout(1000)
     page.close()
-    encode_gif(ffmpeg, recording.path(), ROOT / "docs/media/earth-zoom.gif")
-    print("Recorded Earth zoom and 3D orbit GIF", flush=True)
-    (work / "map-checks.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
+    capture_weather_journey(context, api, work, ffmpeg)
     return stats
 
 
@@ -243,7 +294,7 @@ def main() -> None:
     """Launch isolated services and capture real browser media at 1440×900."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--video", required=True, type=Path, help="License-cleared fire clip without faces.")
-    parser.add_argument("--section", choices=["all", "map", "detection"], default="all")
+    parser.add_argument("--section", choices=["all", "map", "detection", "weather-gif"], default="all")
     parser.add_argument("--camera-video", type=Path, help="A separate cleared clip for the simulated camera.")
     parser.add_argument("--image-video", type=Path, help="A separate cleared scene for image inspection.")
     parser.add_argument("--api-port", type=int, default=18000)
@@ -350,6 +401,8 @@ def main() -> None:
                 route.fulfill(response=response, body=response.text() + "\nexport {map as captureMap};\n")
 
             context.route("**/world-map/app.mjs*", expose_map)
+            if args.section == "weather-gif":
+                capture_weather_journey(context, api, work, ffmpeg)
             if args.section in {"all", "map"}:
                 capture_maps(context, api, output, work, ffmpeg)
             if args.section in {"all", "detection"}:

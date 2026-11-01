@@ -45,27 +45,30 @@ the author's supplied historical Telegram screenshot in a labelled, read-only ca
 It does not insert delivery records, send messages or alter the actual user's alert history.
 Normal application launches show actual delivery history. Camera screenshots precede delivery attempts.
 Streamlit's supported `client.toolbarMode` and `ui.hideTopBar` settings hide toolbar controls.
-Both GIFs derive from 20-second Playwright recordings, without source audio.
-The map recording uses a capture-only JavaScript export to control the existing MapLibre camera;
+The prediction GIF derives from a 20-second Playwright recording, without source audio.
+The map GIF uses 240 fully loaded PNG captures at 12 fps, so network waits are excluded
+from the animation. Official weather colours stay enabled throughout the journey.
+The map capture uses a capture-only JavaScript export to control the existing MapLibre camera;
 provider data, geometry and application styling are real and unmodified.
 The populated feed's empty-state message is checked using Chromium's computed styles.
 City captures must contain rendered buildings with a camera pitch of at least 50 degrees.
 
 ## Capture inventory
 
-All eight PNG captures are 1440×900: `fire-danger.png`, `satellite-detections.png`, `map-tunis.png`,
-`map-marseille.png`, `image-inspector.png`, `video-studio.png`, `live-camera.png` and `alerts.png` under
-`docs/screenshots/`. The camera uses a recorded stream, not a physical camera.
-`demo.gif` shows live prediction; `earth-zoom.gif` shows the globe-to-Marseille approach and a 3D orbit.
-Each is 20 seconds and below 8 MB. Encoding uses 256 colours without dithering, transparent
-delta frames or offset subframes, preventing patterned trails and incomplete-frame artifacts.
-Resolution and frame rate adapt to the size limit while preserving viewport aspect ratio.
+The automated map, image and video screenshots are 1440×900. The author supplied replacement
+versions of `alerts.png` (1585×992) and `live-camera.png` (1586×992); these are included unchanged.
+They supersede the automated captures of those views. The camera showcase uses a recorded
+stream, not a physical camera. These supplied replacements are presentation assets;
+they are not additional model-evaluation evidence.
+`demo.gif` shows live prediction; `earth-weather-3d.gif` shows the globe-to-Marseille approach and a 3D orbit.
+Each is 20 seconds and below 8 MB. Encoding avoids dithering to prevent patterned trails.
+The weather animation keeps 12 fps; resolution and palette adapt to the size limit.
 The capture source uses NASA's medium-resolution rendition. Annotations are actual model predictions.
 
 | GIF | Dimensions | Duration | Bytes |
 | --- | --- | --- | --- |
 | `demo.gif` | 560×350, 4 fps | 20 seconds | 4,458,365 |
-| `earth-zoom.gif` | 480×300, 4 fps | 20 seconds | 7,405,101 |
+| `earth-weather-3d.gif` | 400×250, 12 fps during movement | 20 seconds | 6,908,127 |
 
 ## Author contribution
 

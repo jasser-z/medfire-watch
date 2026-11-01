@@ -13,7 +13,7 @@ Observation satellite et météo, avec détection locale du feu et de la fumée 
 
 | Prédiction en direct | Du globe à la ville en 3D |
 | --- | --- |
-| ![Prédiction en direct](docs/media/demo.gif) | ![Zoom sur la Terre et bâtiments en 3D](docs/media/earth-zoom.gif) |
+| ![Prédiction en direct](docs/media/demo.gif) | ![Zoom sur la Terre et bâtiments en 3D](docs/media/earth-weather-3d.gif) |
 
 ## Résultats clés
 
