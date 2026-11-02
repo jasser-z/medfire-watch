@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from medfire_watch.browser_camera import BrowserCameraMonitor
 from medfire_watch.config import PROJECT_ROOT
 from medfire_watch.drawing import draw_detections
+from pydantic import BaseModel, Field
 
 from api.services import (
     DETECTION_WEIGHTS_PATH,
@@ -61,7 +62,6 @@ def _decode_camera_upload(image: UploadFile) -> np.ndarray:
     if decoded is None or decoded.size == 0:
         raise HTTPException(status_code=400, detail="Camera frame is not a readable JPEG or PNG image.")
 
-
     return decoded
 
 
@@ -88,6 +88,37 @@ def queue_camera_alert(alert_id: str, image: UploadFile = File(...)) -> dict[str
 def live_camera_status() -> dict[str, Any]:
     """Report camera photo delivery counts and the latest failure."""
     return _browser_camera_monitor.status()
+
+
+class CameraCooldownSettings(BaseModel):
+    minutes: int = Field(ge=0, le=1440, strict=True)
+
+
+@router.get("/live-camera/cooldown")
+def camera_cooldown() -> dict[str, int]:
+    """Return the active camera alert interval in minutes."""
+    return {"minutes": get_alert_manager().camera_cooldown()}
+
+
+@router.put("/live-camera/cooldown")
+def edit_camera_cooldown(settings: CameraCooldownSettings) -> dict[str, int]:
+    """Save a camera-only alert interval across restarts."""
+    try:
+        return {"minutes": get_alert_manager().set_camera_cooldown(settings.minutes)}
+    except OSError:
+        raise HTTPException(503, "The camera cooldown could not be saved.") from None
+
+
+@router.post("/live-camera/cooldown/reset")
+def reset_camera_cooldown() -> dict[str, bool]:
+    """Clear only the camera timer so the next qualifying alert can be sent."""
+    try:
+        get_alert_manager().reset_camera_cooldown()
+    except (OSError, RuntimeError):
+        raise HTTPException(503, "The camera cooldown could not be reset.") from None
+    if _browser_camera_monitor.last_error == "Camera alert was suppressed by cooldown.":
+        _browser_camera_monitor.last_error = None
+    return {"reset": True}
 
 
 @router.get("/health")

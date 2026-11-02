@@ -11,6 +11,60 @@ let running = false,
   lastDetect = 0,
   debug = new URLSearchParams(location.search).has('debug');
 $('#debug').hidden = !debug;
+async function cooldownRequest(method = 'GET', suffix = '', minutes) {
+  const response = await fetch('/live-camera/cooldown' + suffix, {
+    method,
+    ...(minutes === undefined
+      ? {}
+      : {
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ minutes }),
+        }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw Error(data.detail || 'Cooldown request failed');
+  return data;
+}
+function cooldownBusy(busy) {
+  for (const id of ['#cooldown-minutes', '#cooldown-save', '#cooldown-reset']) $(id).disabled = busy;
+}
+async function loadCooldown() {
+  try {
+    const data = await cooldownRequest();
+    $('#cooldown-minutes').value = data.minutes;
+    $('#cooldown-feedback').textContent =
+      `Saved interval: ${data.minutes} min. Set 0 to disable the wait. Reset allows the next qualifying alert.`;
+    cooldownBusy(false);
+  } catch {
+    $('#cooldown-feedback').textContent = 'Cooldown settings unavailable. Reload the page to retry.';
+  }
+}
+$('#cooldown-save').onclick = async () => {
+  const input = $('#cooldown-minutes');
+  if (!input.reportValidity() || input.value === '') return;
+  cooldownBusy(true);
+  try {
+    const data = await cooldownRequest('PUT', '', Number(input.value));
+    $('#cooldown-feedback').textContent = `Saved: ${data.minutes} min. Applies immediately and after restart.`;
+  } catch (error) {
+    $('#cooldown-feedback').textContent = 'Could not save cooldown: ' + error.message;
+  } finally {
+    cooldownBusy(false);
+  }
+};
+$('#cooldown-reset').onclick = async () => {
+  cooldownBusy(true);
+  try {
+    await cooldownRequest('POST', '/reset');
+    $('#cooldown-feedback').textContent = 'Wait reset. The next qualifying detection can send an alert.';
+    if ($('#notice').textContent === 'Camera alert was suppressed by cooldown.') $('#notice').textContent = '';
+  } catch (error) {
+    $('#cooldown-feedback').textContent = 'Could not reset cooldown: ' + error.message;
+  } finally {
+    cooldownBusy(false);
+  }
+};
+loadCooldown();
 function fit() {
   const r = video.getBoundingClientRect(),
     d = devicePixelRatio || 1;

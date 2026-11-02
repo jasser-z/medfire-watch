@@ -174,6 +174,13 @@ Satellite freshness and retrieval errors appear beneath its controls.
 
 ## Live camera and alerts
 
+Use **Alert cooldown (minutes)** below the camera to choose a wait between camera alerts
+(0–1440 minutes). Select **Save interval** to apply it immediately and keep it after restart;
+0 disables the wait. **Reset current wait** allows the next qualifying camera detection to
+send without changing the saved interval or deleting history. It does not send a photo by itself.
+Saved overrides live in the ignored `runs/alerts/camera_settings.json`; otherwise the YAML
+default applies. Other alert cooldowns are unaffected.
+
 Allow browser camera permission and press Start camera. Negotiated dimensions and fps
 appear beside the detector update rate. Fullscreen includes video, boxes and status.
 Configure `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` locally. Open the bot, press Start,

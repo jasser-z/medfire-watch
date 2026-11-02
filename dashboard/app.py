@@ -42,6 +42,27 @@ st.markdown(
     .test-intro .kicker {font-size: .68rem; letter-spacing: .2em; color: #ffb474;}
     .test-intro h2 {font-size: 1.8rem; padding: 6px 0; margin: 0; color: #f1f7fc;}
     .test-intro p {color: #aac3d4; margin: 0; max-width: 760px;}
+    .alerts-intro {padding: 24px 28px; border: 1px solid #7896aa44; border-radius: 18px;
+      background: linear-gradient(115deg, #173449, #0a1825); margin: 8px 0 18px;}
+    .alerts-intro .kicker {font-size: .7rem; letter-spacing: .18em; color: #ffb474;}
+    .alerts-intro h2 {margin: 6px 0; padding: 0; color: #f1f7fc; font-size: 1.9rem;}
+    .alerts-intro p {color: #aac3d4; margin: 0; max-width: 780px;}
+    .connection-status {display: flex; align-items: center; gap: 10px; min-height: 44px; color: #b8ccda;}
+    .connection-dot {width: 8px; height: 8px; border-radius: 50%; background: #ffc277;
+      box-shadow: 0 0 0 5px #ffc27712; flex-shrink: 0;}
+    .connection-status.connected .connection-dot {background: #77dfbb; box-shadow: 0 0 0 5px #77dfbb12;}
+    .st-key-alerts_toolbar {padding: 14px 18px; background: #0c1b29; border: 1px solid #7896aa33;
+      border-radius: 14px; margin-bottom: 12px;}
+    .st-key-alerts_toolbar button {border-radius: 10px; min-height: 44px; font-weight: 600;}
+    .st-key-detect_telegram_chat button {color: #15212b; background: #ffb474; border-color: #ffb474;}
+    .st-key-detect_telegram_chat button:hover {color: #15212b; background: #ffc38f; border-color: #ffc38f;}
+    .st-key-delete_camera_history button {color: #ffb5aa; border-color: #ff827755; background: #ff827709;}
+    .st-key-delete_camera_history button:hover {border-color: #ff8277; background: #ff827718;}
+    .snapshot-empty {padding: 48px 24px; border: 1px dashed #7896aa55; border-radius: 16px;
+      text-align: center; background: #0b192655; margin: 16px 0;}
+    .snapshot-empty .symbol {color: #ffb474; font-size: 2rem; margin-bottom: 8px;}
+    .snapshot-empty h3 {font-size: 1.2rem; margin: 0; padding: 0; color: #edf5fc;}
+    .snapshot-empty p {color: #aac3d4; max-width: 540px; margin: 10px auto 0;}
     .test-intro, .medfire-brand {animation: medfire-enter .5s ease both;}
     @keyframes medfire-enter {from {opacity: 0; transform: translateY(8px);} to {opacity: 1; transform: none;}}
     @media(max-width: 700px) {.block-container {padding: 3.75rem 1rem 1rem;}
@@ -92,10 +113,11 @@ with pages[1]:
         "The camera is rendered natively at its negotiated resolution and frame rate; "
         "detector frames are sent separately."
     )
-    components.iframe(f"{PUBLIC_API_URL}/live-camera{'?debug=1' if debug_mode else ''}", height=760, scrolling=False)
+    components.iframe(f"{PUBLIC_API_URL}/live-camera{'?debug=1' if debug_mode else ''}", height=940, scrolling=True)
     st.caption(
         "Automatic snapshots require confidence ≥50%, at least 1% frame area, and one second of overlapping detection."
     )
+
 
 @st.cache_data(ttl=300)
 def _load_snapshot(photo_name: str) -> bytes | None:
@@ -112,24 +134,68 @@ def _load_snapshot(photo_name: str) -> bytes | None:
 
 
 with pages[2]:
-    heading_column, delete_column = st.columns([4, 1], vertical_alignment="center")
-    with heading_column:
-        st.subheader("Camera snapshots")
-    with delete_column:
-        if "confirm_delete_all" not in st.session_state:
-            st.session_state.confirm_delete_all = False
-
-        if not st.session_state.confirm_delete_all:
+    st.markdown(
+        '<section class="alerts-intro"><div class="kicker">ALERT CENTER · TELEGRAM</div>'
+        "<h2>Camera snapshots</h2><p>Follow fire and smoke snapshots from your live camera, "
+        "check delivery results, and manage your Telegram connection.</p></section>",
+        unsafe_allow_html=True,
+    )
+    status = api_request("GET", "/alerts")
+    configured = bool(status and status.get("configured"))
+    with st.container(key="alerts_toolbar"):
+        connection_column, detect_column, delete_column = st.columns([3, 1.6, 1], vertical_alignment="center")
+        with connection_column:
+            if SHOWCASE_ALERT:
+                connection_label, connection_class = "Historical alert preview", ""
+            elif status is None:
+                connection_label, connection_class = "Connection status unavailable", ""
+            elif configured:
+                connection_label, connection_class = "Telegram configured", " connected"
+            else:
+                connection_label, connection_class = "Telegram setup needed", ""
+            st.markdown(
+                f'<div class="connection-status{connection_class}"><span class="connection-dot"></span>'
+                f"<strong>{connection_label}</strong></div>",
+                unsafe_allow_html=True,
+            )
+        with detect_column:
+            if st.button(
+                "Re-detect Telegram chat" if configured else "Detect Telegram chat",
+                key="detect_telegram_chat",
+                type="primary",
+                use_container_width=True,
+                disabled=SHOWCASE_ALERT or status is None,
+                help="Open your bot in Telegram and send a new message before detecting your chat.",
+            ):
+                with st.spinner("Finding your Telegram chat…"):
+                    connected = api_request("POST", "/telegram/detect")
+                if connected:
+                    st.session_state.telegram_connection_notice = "Telegram chat connected successfully."
+                    st.rerun()
+        with delete_column:
             if st.button(
                 "Delete all",
                 key="delete_camera_history",
-                disabled=SHOWCASE_ALERT,
+                use_container_width=True,
+                disabled=SHOWCASE_ALERT or status is None,
                 help="Clear local history and saved snapshots; Telegram messages remain.",
             ):
                 st.session_state.confirm_delete_all = True
-                st.rerun()
-        else:
-            st.warning("Delete all snapshots?")
+
+    if notice := st.session_state.pop("telegram_connection_notice", None):
+        st.success(notice)
+    if not SHOWCASE_ALERT:
+        st.caption(
+            "Need to reconnect? Open your Telegram bot, press Start or send a new message, then select Detect."
+            if not configured
+            else "New snapshots are sent to your configured Telegram chat. "
+            "Re-detect after sending your bot a fresh message."
+        )
+    with st.container():
+        if "confirm_delete_all" not in st.session_state:
+            st.session_state.confirm_delete_all = False
+        if st.session_state.confirm_delete_all:
+            st.warning("Delete all local snapshots and delivery history? Messages in Telegram will remain.")
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("Confirm", key="delete_confirm_yes", type="primary"):
@@ -148,24 +214,6 @@ with pages[2]:
                 if st.button("Cancel", key="delete_confirm_no"):
                     st.session_state.confirm_delete_all = False
                     st.rerun()
-    st.write("Track the snapshots sent by the live camera, including delivery failures.")
-    status = api_request("GET", "/alerts")
-    if status and not SHOWCASE_ALERT:
-        if not status.get("configured"):
-            st.info("Open your Telegram bot, press Start, then connect your chat here.")
-            if st.button("Connect Telegram chat"):
-                connected = api_request("POST", "/telegram/detect")
-                if connected:
-                    st.success("Telegram chat connected.")
-                    st.rerun()
-        else:
-            with st.expander("Telegram connection", expanded=False):
-                st.caption("Telegram bot and chat are connected.")
-                if st.button("Re-detect Telegram chat"):
-                    connected = api_request("POST", "/telegram/detect")
-                    if connected:
-                        st.success("Telegram chat reconnected.")
-                        st.rerun()
 
     @st.fragment(run_every=3)
     def camera_history():
@@ -182,9 +230,23 @@ with pages[2]:
                     st.caption("Historical example · Telegram screenshot supplied by the author.")
             return
         result = api_request("GET", "/alerts/log")
-        messages = result.get("messages", []) if result else []
+        if result is None:
+            return
+        messages = result.get("messages", [])
         if not messages:
-            st.info("No live-camera snapshot attempts have been recorded yet.")
+            st.markdown(
+                '<div class="snapshot-empty"><div class="symbol">◎</div><h3>Ready for the first snapshot</h3>'
+                "<p>Start Live camera to monitor for fire and smoke. Snapshot attempts and Telegram delivery "
+                "results will appear here automatically.</p></div>",
+                unsafe_allow_html=True,
+            )
+            return
+        delivered = sum(bool(item.get("confirmed")) for item in messages)
+        total_column, delivered_column, failed_column = st.columns(3)
+        total_column.metric("Snapshot attempts", len(messages))
+        delivered_column.metric("Delivered", delivered)
+        failed_column.metric("Failed", len(messages) - delivered)
+        st.caption("Recent snapshots · newest first · showing up to 20 attempts")
         for item in messages[:20]:
             with st.container(border=True):
                 st.write(("Delivered" if item.get("confirmed") else "Failed") + " · " + item.get("sent_at_utc", ""))

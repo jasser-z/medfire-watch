@@ -30,6 +30,39 @@ class AlertManager:
         self.log_path = self.state_path.with_name("telegram_sent.jsonl")
         self.failure_log_path = self.state_path.with_name("telegram_failed.jsonl")
         self.history_clear_path = self.state_path.with_name("history_cleared.json")
+        self.camera_settings_path = self.state_path.with_name("camera_settings.json")
+
+    def camera_cooldown(self) -> int:
+        """Read the saved camera interval, falling back to the YAML default."""
+        with self._history_lock:
+            if not self.camera_settings_path.exists():
+                return self.camera_cooldown_minutes
+            settings = json.loads(self.camera_settings_path.read_text(encoding="utf-8"))
+            minutes = settings["camera_cooldown_minutes"]
+            if type(minutes) is not int or not 0 <= minutes <= 1440:
+                raise ValueError("Saved camera cooldown must be between 0 and 1440 minutes.")
+            return minutes
+
+    def set_camera_cooldown(self, minutes: int) -> int:
+        """Persist a camera-only interval shared by API and delivery workers."""
+        if type(minutes) is not int or not 0 <= minutes <= 1440:
+            raise ValueError("Camera cooldown must be between 0 and 1440 minutes.")
+        with self._history_lock:
+            self.camera_settings_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.camera_settings_path.with_suffix(".tmp")
+            temporary.write_text(json.dumps({"camera_cooldown_minutes": minutes}), encoding="utf-8")
+            temporary.replace(self.camera_settings_path)
+        return minutes
+
+    def reset_camera_cooldown(self) -> None:
+        """Allow the next qualifying camera alert without removing delivery history."""
+        with self._history_lock:
+            state = self._read_state()
+            state.pop("live_camera", None)
+            self.state_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.state_path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(state, indent=2), encoding="utf-8")
+            temporary.replace(self.state_path)
 
     def clear_history(self, snapshot_dir: Path) -> dict[str, int]:
         """Clear local attempts/photos while preserving credentials and cooldown settings."""
@@ -99,7 +132,7 @@ class AlertManager:
             "bot_token_present": bool(token),
             "chat_id_present": bool(chat_id),
             "cooldown_minutes": self.cooldown_minutes,
-            "camera_cooldown_minutes": self.camera_cooldown_minutes,
+            "camera_cooldown_minutes": self.camera_cooldown(),
         }
 
     @staticmethod
@@ -173,7 +206,7 @@ class AlertManager:
         previous = state.get(dedupe_key)
         if previous:
             sent_at = datetime.fromisoformat(previous)
-            cooldown = self.camera_cooldown_minutes if kind == "live_camera" else self.cooldown_minutes
+            cooldown = self.camera_cooldown() if kind == "live_camera" else self.cooldown_minutes
             if now - sent_at < timedelta(minutes=cooldown):
                 return {"sent": False, "reason": "cooldown"}
 
