@@ -18,6 +18,7 @@ MedFire Watch : détection des feux de forêt et de la fumée avec YOLOv8, point
 - Détecter le feu et la fumée par caméra et mettre en file des photos Telegram après détections persistantes.
 - Analyser des images et lire les vidéos avec boîtes alignées, chronologie des détections et priorité de recherche.
 - Consulter l'historique d'envoi et télécharger les vidéos annotées à leur résolution source.
+- Gérer la détection Telegram à côté de Supprimer tout dans Alerts ; modifier ou réinitialiser le délai depuis Live camera.
 
 ## Démarrage rapide
 
@@ -28,7 +29,7 @@ Python 3.11 est strictement requis (Python 3.12+ n'est pas supporté). Créez l'
 Windows PowerShell :
 
 ```powershell
-python -m venv .venv
+py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install --upgrade pip
 pip install -r requirements.txt
@@ -45,7 +46,13 @@ pip install -r requirements.txt
 python scripts/run_app.py
 ```
 
-Ouvrez [localhost:8501](http://127.0.0.1:8501). Copiez `.env.example` vers `.env` et renseignez votre clé FIRMS et vos identifiants Telegram. L'inférence d'images et de vidéos fonctionne localement sans configuration supplémentaire.
+Avant le lancement, copiez `.env.example` vers `.env` et renseignez votre clé FIRMS et le jeton du bot Telegram.
+Suivez le [guide de configuration](docs/GUIDE.md) pour détecter votre conversation privée. Ouvrez
+[localhost:8501](http://127.0.0.1:8501). L'inférence d'images et de vidéos fonctionne aussi sans ces identifiants.
+
+Dans **Live camera**, enregistrez un délai de 0 à 1440 minutes (0 désactive l'attente), ou sélectionnez
+**Reset current wait** pour autoriser la prochaine alerte admissible. Le délai reste enregistré après redémarrage ;
+la réinitialisation conserve l'historique et n'envoie pas de photo à elle seule.
 
 ### Configuration
 
@@ -121,7 +128,8 @@ L'[Architecture](docs/ARCHITECTURE.md) détaille la gestion du cache et les méc
 ## Feuille de route
 
 Surveillance multi-caméra autonome, évaluation du délai d'alerte et des faux positifs,
-authentification optionnelle de l'API et durcissement du déploiement.
+et durcissement supplémentaire du déploiement. Le jeton d'API optionnel est déjà implémenté ; consultez
+les [limites du déploiement](docs/DEPLOYMENT.md) avant de l'activer pour les clients navigateur.
 
 ## Développement
 

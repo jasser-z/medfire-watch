@@ -163,8 +163,7 @@ def test_world_hotspots_logic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_telegram_detect_chat_branches(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    mgr = AlertManager(cooldown_minutes=10, camera_cooldown_minutes=5)
-    mgr.state_path = tmp_path / "state.json"
+    mgr = AlertManager(cooldown_minutes=10, camera_cooldown_minutes=5, state_path=tmp_path / "state.json")
     mgr.log_path = tmp_path / "sent.jsonl"
     mgr.failure_log_path = tmp_path / "failed.jsonl"
 
@@ -198,8 +197,7 @@ def test_telegram_detect_chat_branches(monkeypatch: pytest.MonkeyPatch, tmp_path
 
 
 def test_telegram_send_and_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    mgr = AlertManager(cooldown_minutes=10, camera_cooldown_minutes=5)
-    mgr.state_path = tmp_path / "state.json"
+    mgr = AlertManager(cooldown_minutes=10, camera_cooldown_minutes=5, state_path=tmp_path / "state.json")
     mgr.log_path = tmp_path / "sent.jsonl"
     mgr.failure_log_path = tmp_path / "failed.jsonl"
 

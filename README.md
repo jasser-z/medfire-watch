@@ -18,6 +18,7 @@ MedFire Watch: wildfire and smoke detection with YOLOv8, NASA satellite hotspots
 - Detect fire and smoke from a browser camera and queue annotated Telegram photos after persistent detections.
 - Inspect images and play original videos with aligned boxes, a detection timeline and seek prioritisation.
 - Review photo delivery attempts and download full-resolution annotated video exports.
+- Manage Telegram detection beside Delete all in Alerts; edit or reset the camera cooldown from Live camera.
 
 ## Quick start
 
@@ -28,7 +29,7 @@ Python 3.11 is strictly required (Python 3.12+ is not supported). Create the env
 Windows PowerShell:
 
 ```powershell
-python -m venv .venv
+py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install --upgrade pip
 pip install -r requirements.txt
@@ -45,7 +46,13 @@ pip install -r requirements.txt
 python scripts/run_app.py
 ```
 
-Open [localhost:8501](http://127.0.0.1:8501). Copy `.env.example` to `.env` and supply your own FIRMS key and Telegram credentials for those integrations. Image and video inference works locally with zero extra configuration.
+Before launching, copy `.env.example` to `.env` and supply your FIRMS key and Telegram bot token.
+Follow the [setup guide](docs/GUIDE.md) to detect your private chat. Open
+[localhost:8501](http://127.0.0.1:8501). Image and video inference also works without these integration credentials.
+
+Under **Live camera**, save a cooldown of 0–1440 minutes (0 disables the wait), or select
+**Reset current wait** to allow the next qualifying alert. The interval persists across restarts;
+resetting keeps history and does not send a photo by itself.
 
 ### Configuration
 
@@ -121,7 +128,8 @@ flowchart LR
 ## Roadmap
 
 Headless multi-camera monitoring; held-out false-alarm and time-to-alert evaluation;
-optional API authentication and deployment hardening. These are planned capabilities.
+further deployment hardening. Optional API token checks are already implemented; see
+[deployment limitations](docs/DEPLOYMENT.md) before enabling them for browser clients.
 
 ## Development
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -136,11 +137,10 @@ async def api_guard_middleware(request: Request, call_next: Callable[[Request], 
 
     api_token = os.getenv("MEDFIRE_API_TOKEN", "").strip()
     if api_token:
-        path = request.url.path.rstrip("/")
-        requires_token = (request.method == "POST") or (request.method == "DELETE" and path == "/alerts/history")
+        requires_token = request.method not in {"GET", "HEAD", "OPTIONS"}
         if requires_token:
             token_header = request.headers.get("x-medfire-token")
-            if not token_header or token_header != api_token:
+            if not token_header or not secrets.compare_digest(token_header.encode(), api_token.encode()):
                 return JSONResponse(status_code=401, content={"detail": "Invalid or missing X-MedFire-Token."})
 
     return await call_next(request)

@@ -11,6 +11,7 @@ let running = false,
   lastDetect = 0,
   debug = new URLSearchParams(location.search).has('debug');
 $('#debug').hidden = !debug;
+const cameraSession = crypto.randomUUID();
 async function cooldownRequest(method = 'GET', suffix = '', minutes) {
   const response = await fetch('/live-camera/cooldown' + suffix, {
     method,
@@ -129,7 +130,11 @@ async function detect() {
     const started = performance.now(),
       form = new FormData();
     form.append('image', blob, 'detector.jpg');
-    const r = await fetch('/live-camera/detect', { method: 'POST', body: form });
+    const r = await fetch('/live-camera/detect', {
+      method: 'POST',
+      headers: { 'X-Camera-Session': cameraSession },
+      body: form,
+    });
     const data = await r.json();
     if (!r.ok) throw Error(data.detail || 'Detector failed');
     latest = sourceDetections(data, full.width, full.height);

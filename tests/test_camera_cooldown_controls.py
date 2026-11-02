@@ -54,6 +54,21 @@ def test_camera_cooldown_api_validates_and_clears_only_cooldown_notice(tmp_path,
     assert routes._browser_camera_monitor.last_error == "Network unavailable"
 
 
+def test_camera_settings_require_token_when_authentication_enabled(tmp_path, monkeypatch):
+    manager = AlertManager(state_path=tmp_path / "state.json")
+    monkeypatch.setattr(routes, "get_alert_manager", lambda: manager)
+    monkeypatch.setenv("MEDFIRE_API_TOKEN", "audit-test-token")
+    client = TestClient(app)
+    assert client.put("/live-camera/cooldown", json={"minutes": 12}).status_code == 401
+    assert client.post("/live-camera/cooldown/reset").status_code == 401
+    assert not manager.camera_settings_path.exists()
+    response = client.put(
+        "/live-camera/cooldown", json={"minutes": 12}, headers={"X-MedFire-Token": "audit-test-token"}
+    )
+    assert response.status_code == 200
+    assert response.json() == {"minutes": 12}
+
+
 @pytest.mark.parametrize("minutes", [-1, 1441, 1.5, True])
 def test_invalid_interval_does_not_write_settings(tmp_path, minutes):
     manager = AlertManager(state_path=tmp_path / "state.json")
