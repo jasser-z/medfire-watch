@@ -61,12 +61,12 @@ def satellite_map_data() -> dict[str, Any]:
     """Return cached observations and satellite refresh status."""
     from medfire_watch.world_hotspots import WORLD_PATH, load_world_hotspots, refresh_in_progress
 
-    if not WORLD_PATH.exists():
-        if not refresh_in_progress():
-            threading.Thread(target=_refresh_map_data, daemon=True).start()
-        raise HTTPException(503, "Satellite data is loading.")
+    world = load_world_hotspots()
+    if not WORLD_PATH.exists() and not refresh_in_progress():
+        threading.Thread(target=_refresh_map_data, daemon=True).start()
+
     return {
-        "world": load_world_hotspots(),
+        "world": world,
         "refresh_error": _world_refresh_error,
         "refresh_in_progress": refresh_in_progress(),
     }
