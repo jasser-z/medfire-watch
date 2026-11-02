@@ -81,3 +81,12 @@ The supplied Telegram illustration still has unverified underlying-image attribu
 
 The repository passes the listed automated checks. The remaining findings prevent an unconditional
 security or production-readiness claim.
+
+## CI follow-up
+
+The map-route test previously depended on a local satellite cache, so a fresh checkout could fail.
+It now uses an isolated temporary observation fixture and rejects external provider requests.
+The neighbouring satellite parsing test now generates recent UTC observations instead of using a fixed date.
+The exact CI pytest command passed with 85 tests in an isolated release copy without `.env`, integration
+credentials, provider caches or runtime outputs. This verification used local Windows/Python 3.11;
+the hosted Linux workflow still needs its own rerun.

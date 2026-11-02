@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -59,7 +61,27 @@ def test_detection_service_fake_model() -> None:
     assert formatted["detections"] == []
 
 
-def test_map_routes() -> None:
+def test_map_routes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A fresh CI checkout has neither private provider keys nor an ignored feed cache.
+    # Exercise the real cache reader with a fixture, without contacting NASA.
+    world_path = tmp_path / "world_hotspots.json"
+    world = {
+        "observations": 1,
+        "detections": [{"latitude": 36.8, "longitude": 10.2, "confidence": "nominal"}],
+    }
+    world_path.write_text(json.dumps(world), encoding="utf-8")
+    load_world = world_hotspots.load_world_hotspots
+    monkeypatch.setattr(world_hotspots, "WORLD_PATH", world_path)
+    monkeypatch.setattr(world_hotspots, "_WORLD_CACHE", None)
+    monkeypatch.setattr(world_hotspots, "load_world_hotspots", lambda: load_world(world_path))
+    monkeypatch.setattr(world_hotspots, "refresh_if_old", lambda: False)
+    monkeypatch.setattr(world_hotspots, "refresh_in_progress", lambda: False)
+    monkeypatch.setattr("api.routers.map._world_refresh_error", None)
+
+    def reject_network(*args, **kwargs):
+        raise AssertionError("Map route checks must not contact external providers.")
+
+    monkeypatch.setattr(requests.sessions.Session, "request", reject_network)
     # /world-map HTML
     resp = client.get("/world-map")
     assert resp.status_code == 200
@@ -68,7 +90,7 @@ def test_map_routes() -> None:
     # /world-map/data
     resp = client.get("/world-map/data")
     assert resp.status_code == 200
-    assert "world" in resp.json()
+    assert resp.json()["world"] == world
 
     # /world-map/countries
     resp = client.get("/world-map/countries/labels")
@@ -95,7 +117,7 @@ def test_map_routes() -> None:
 
     # /fire-weather/tiles invalid format
     resp = client.get("/fire-weather/tiles/bad-date/0/0/0.png")
-    assert resp.status_code in {400, 503}
+    assert resp.status_code == 400
 
     # /world-map/nearest-town
     resp = client.get("/world-map/nearest-town?latitude=36.8&longitude=10.2")
@@ -140,10 +162,11 @@ def test_world_hotspots_logic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
             world_hotspots.refresh_world_hotspots()
 
     # Valid CSV
+    observed = datetime.now(timezone.utc) - timedelta(minutes=10)
     csv_data = (
         "latitude,longitude,acq_date,acq_time,frp,confidence,satellite\n"
-        "36.5,10.2,2026-11-02,0200,15.5,nominal,VIIRS SNPP\n"
-        "36.6,10.3,2026-11-02,0205,8.0,low,VIIRS SNPP\n"
+        f"36.5,10.2,{observed:%Y-%m-%d},{observed:%H%M},15.5,nominal,VIIRS SNPP\n"
+        f"36.6,10.3,{observed:%Y-%m-%d},{observed:%H%M},8.0,low,VIIRS SNPP\n"
     )
     mock_resp.text = csv_data
     dest_path = tmp_path / "hotspots.json"

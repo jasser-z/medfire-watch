@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Increased launcher API readiness check timeout to 120 seconds in `scripts/run_app.py`.
 
 ### Fixed
+- Make map-route tests independent of NASA credentials and local satellite caches; use recent fixture timestamps.
 - Require optional API authentication on all mutation methods, including cooldown PUT requests.
 - Send a unique camera session header from each browser page to isolate persistence tracking.
 - Isolate alert-manager test settings from local runtime overrides.
