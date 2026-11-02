@@ -54,6 +54,8 @@ OpenFreeMap, © OpenMapTiles, © contributeurs OpenStreetMap. [Conditions](THIRD
 
 ## Démarrage
 
+[Guide complet : installation, clé NASA, Telegram et premier lancement](docs/GUIDE.md)
+
 Python 3.11 est requis. Sous Windows PowerShell :
 
 ```powershell

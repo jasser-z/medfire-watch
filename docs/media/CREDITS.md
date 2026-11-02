@@ -1,86 +1,38 @@
-# Media credits and capture
+# Media sources and attribution
 
-## NASA source
+## Fire and smoke footage
 
-NASA Goddard Space Flight Center / Grace Weikert, FireSense prescribed-burn footage,
-Fishlake National Forest, Utah, October 2023. The NASA library record identifies NASA GSFC
-as the source and Grace Weikert as photographer; no third-party copyright is listed.
-Video playback uses seconds 118–130 (aerial flames). The simulated camera uses seconds
-69–77 (forest-edge fire), and image inspection uses a frame at second 99 (distant smoke).
-These scenes have no faces. Source audio is omitted. Boxes are actual detector output.
-
-[NASA library record][nasa] · [NASA media guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/)
+NASA Goddard Space Flight Center / Grace Weikert, FireSense footage,
+Fishlake National Forest, Utah, October 2023.
+[Source record][nasa] · [NASA media-use guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/)
 
 [nasa]: https://images.nasa.gov/details/NASAFIRESENSE_3840x2160_23.976fps_AAC_48kHz_Stereo_Progressive
 
-NASA media use does not imply NASA endorsement. The original media and intermediate
-recordings stay in ignored runtime storage; this repository publishes only selected UI captures.
+The detector examples use aerial flames (118–130 seconds), forest-edge fire (69–77 seconds)
+and distant smoke (a frame at second 99). Annotations and interface captures are derived displays.
+NASA attribution does not imply endorsement.
 
-## Map captures
+## Map imagery and data
 
-EOX Sentinel-2 cloudless 2025 contains modified Copernicus Sentinel data 2025.
-Credit EOX IT Services GmbH / EOxCloudless. Free imagery and adapted screenshots carry
-CC BY-NC-SA 4.0 conditions. Map details: OpenFreeMap, © OpenMapTiles,
-© OpenStreetMap contributors (ODbL). Place names: GeoNames. Countries: Natural Earth.
-Weather: European Union / Copernicus EMS / GWIS / ECMWF and Open-Meteo.
-Observations: NASA FIRMS / LANCE / VIIRS SNPP NRT.
-[Full terms and provider links](../../THIRD_PARTY_NOTICES.md)
+- EOxCloudless / EOX IT Services GmbH, containing modified Copernicus Sentinel data 2025.
+  Free imagery and adapted captures have CC BY-NC-SA 4.0 conditions.
+- OpenFreeMap, © OpenMapTiles and © OpenStreetMap contributors; OSM data is ODbL.
+- GeoNames place names, CC BY 4.0; Natural Earth country data, public domain.
+- European Union / Copernicus EMS / GWIS / ECMWF fire-weather data and Open-Meteo forecasts.
+- NASA FIRMS / LANCE / VIIRS SNPP NRT heat observations.
 
-## Reproduce
+Provider attribution remains visible in map captures. See
+[third-party notices](../../THIRD_PARTY_NOTICES.md) for source links and conditions.
 
-Install the development requirements, then `python -m pip install playwright` and
-`python -m playwright install chromium`. Supply only a license-cleared clip with no faces:
+## Interface and Telegram images
 
-```sh
-python scripts/capture_media.py --video path/to/cleared-fire-clip.mp4
-```
+The camera and Alerts presentation images and Telegram delivery screenshot are project-supplied assets.
+The Telegram example depicts a historical photo alert; it is separate from automated capture runs.
+The underlying image's source attribution remains unverified. These images are interface illustrations,
+not additional model-evaluation evidence. The camera demonstration uses a recorded stream.
 
-Use `--camera-video` and `--image-video` with separate license-cleared scenes to avoid
-repeating one frame across different features.
+## Animated demonstrations
 
-The script uses 1440×900 headless Chromium, separate local service ports, isolated alert
-history, empty Telegram credentials and Chromium's fake-video-capture flag. It captures
-real detector outputs. `MEDFIRE_SHOWCASE_ALERT=1` is set only in capture subprocesses to show
-the author's supplied historical Telegram screenshot in a labelled, read-only card.
-It does not insert delivery records, send messages or alter the actual user's alert history.
-Normal application launches show actual delivery history. Camera screenshots precede delivery attempts.
-Streamlit's supported `client.toolbarMode` and `ui.hideTopBar` settings hide toolbar controls.
-The prediction GIF derives from a 20-second Playwright recording, without source audio.
-The map GIF uses 240 fully loaded PNG captures at 12 fps, so network waits are excluded
-from the animation. Official weather colours stay enabled throughout the journey.
-The map capture uses a capture-only JavaScript export to control the existing MapLibre camera;
-provider data, geometry and application styling are real and unmodified.
-The populated feed's empty-state message is checked using Chromium's computed styles.
-City captures must contain rendered buildings with a camera pitch of at least 50 degrees.
-
-## Capture inventory
-
-The automated map, image and video screenshots are 1440×900. The author supplied replacement
-versions of `alerts.png` (1585×992) and `live-camera.png` (1586×992); these are included unchanged.
-They supersede the automated captures of those views. The camera showcase uses a recorded
-stream, not a physical camera. These supplied replacements are presentation assets;
-they are not additional model-evaluation evidence.
-`demo.gif` shows live prediction; `earth-weather-3d.gif` shows the globe-to-Marseille approach and a 3D orbit.
-Each is 20 seconds and below 8 MB. Encoding avoids dithering to prevent patterned trails.
-The weather animation keeps 12 fps; resolution and palette adapt to the size limit.
-The capture source uses NASA's medium-resolution rendition. Annotations are actual model predictions.
-
-| GIF | Dimensions | Duration | Bytes |
-| --- | --- | --- | --- |
-| `demo.gif` | 560×350, 4 fps | 20 seconds | 4,458,365 |
-| `earth-weather-3d.gif` | 400×250, 12 fps during movement | 20 seconds | 6,908,127 |
-
-## Author contribution
-
-`docs/screenshots/telegram-delivery-proof.png` is the clearer full Telegram conversation
-screenshot supplied by the author on 2026-11-02, included unchanged. It shows the
-medfire-watch bot, the annotated photo, and the original message timestamp and confidence.
-Both READMEs display it as delivery proof alongside the interface screenshots.
-
-`docs/screenshots/telegram-alert.png` is the Telegram screenshot supplied by Jasser Zormati.
-It is included as supplied: the medfire-watch bot and annotated photo are visible, without
-personal names, chat identifiers or phone notifications. The message timestamp is
-2026-10-27T23:42:04+01:00, and the caption reports smoke confidence of 73%.
-This screenshot documents a historical delivery separately from the automated capture run.
-The underlying footage source has not been supplied; its attribution remains to be confirmed.
-Physical-webcam acceptance is separate from the synthetic-camera demonstration.
+`demo.gif` illustrates video detection. `earth-weather-3d.gif` illustrates provider weather colours,
+satellite observations and 3D cartography. The map animation captures fully loaded browser frames,
+excluding network waits from playback. No source audio is included.

@@ -54,6 +54,8 @@ OpenFreeMap, © OpenMapTiles, © OpenStreetMap contributors. [Terms](THIRD_PARTY
 
 ## Quick start
 
+[Complete setup: installation, NASA key, Telegram and first run](docs/GUIDE.md)
+
 Use Python 3.11. Create the environment, install, then launch using its interpreter.
 
 Windows PowerShell:

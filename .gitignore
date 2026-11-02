@@ -69,3 +69,19 @@ Thumbs.db
 !/docs/screenshots/*.jpg
 !/docs/screenshots/*.png
 !/docs/media/*.gif
+
+# Additional build, test and temporary outputs
+.venv*/
+.tox/
+.nox/
+.pytype/
+.cache/
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+*.tsbuildinfo
+npm-debug.log*
+playwright-report/
+test-results/
