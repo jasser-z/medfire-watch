@@ -2,18 +2,65 @@
 
 # MedFire Watch
 
-Satellite and weather awareness with local camera, image and video fire/smoke detection.
-
 [![CI][ci-badge]][ci]
-
-[ci-badge]: https://github.com/jasser-z/medfire-watch/actions/workflows/ci.yml/badge.svg
-[ci]: https://github.com/jasser-z/medfire-watch/actions/workflows/ci.yml
 ![Python 3.11](https://img.shields.io/badge/Python-3.11-blue)
 [![AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue)](LICENSE)
 
+MedFire Watch: wildfire and smoke detection with YOLOv8, NASA satellite hotspots, a fire-weather danger map and Telegram alerts.
+
 | Live prediction | Earth zoom and 3D city |
-| --- | --- |
-| ![Live prediction](docs/media/demo.gif) | ![Earth-to-city zoom and 3D buildings](docs/media/earth-weather-3d.gif) |
+| :---: | :---: |
+| ![Live camera detection running YOLOv8 displaying smoke and fire bounding boxes](docs/media/demo.gif) | ![Interactive MapLibre globe zooming from Earth view to 3D city buildings](docs/media/earth-weather-3d.gif) |
+
+## What it does
+
+- Explore a MapLibre globe with NASA heat observations, official fire-weather danger and place forecasts.
+- Detect fire and smoke from a browser camera and queue annotated Telegram photos after persistent detections.
+- Inspect images and play original videos with aligned boxes, a detection timeline and seek prioritisation.
+- Review photo delivery attempts and download full-resolution annotated video exports.
+
+## Quick start
+
+[Complete setup: installation, NASA key, Telegram and first run](docs/GUIDE.md)
+
+Python 3.11 is strictly required (Python 3.12+ is not supported). Create the environment, install requirements, and launch services using its interpreter.
+
+Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install --upgrade pip
+pip install -r requirements.txt
+python scripts/run_app.py
+```
+
+Linux/macOS:
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+python scripts/run_app.py
+```
+
+Open [localhost:8501](http://127.0.0.1:8501). Copy `.env.example` to `.env` and supply your own FIRMS key and Telegram credentials for those integrations. Image and video inference works locally with zero extra configuration.
+
+### Configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `FIRMS_MAP_KEY` | None | NASA FIRMS MAP_KEY for 24-hour satellite heat observations |
+| `TELEGRAM_BOT_TOKEN` | None | Telegram bot token from BotFather |
+| `TELEGRAM_CHAT_ID` | None | Telegram recipient chat ID for alert delivery |
+| `MEDFIRE_API_TOKEN` | None | Optional API token requiring `X-MedFire-Token` on mutation endpoints |
+| `MEDFIRE_ALLOWED_HOSTS` | None | Extra allowed `Host` headers beyond localhost and loopback |
+| `MEDFIRE_ALLOWED_ORIGINS` | None | Extra allowed origins for cross-origin mutation requests |
+| `MEDFIRE_VIDEO_TTL_HOURS` | `24` | Hours to retain completed video analysis results and weather cache tiles |
+| `MEDFIRE_MAX_VIDEO_JOBS` | `2` | Maximum concurrent video processing jobs before returning HTTP 429 |
+| `MEDFIRE_INCLUDE_LOW_CONFIDENCE` | `0` | Set to `1` to include low-confidence VIIRS satellite hotspots |
+| `MEDFIRE_SKIP_WARMUP` | `0` | Set to `1` to bypass heavy YOLO inference warmup during launch/tests |
 
 ## Key results
 
@@ -24,60 +71,26 @@ Satellite and weather awareness with local camera, image and video fire/smoke de
 | GPU-scaled video analysis, batch 8 | **205.81 fps** on an NVIDIA RTX 4060 |
 | 1080p60 annotated export | **44.209 processing fps**, 1,645 input and output frames |
 
-Sources: [split metrics](docs/results/detection_final_metrics.json),
-[benchmark conditions](docs/VIDEO_BENCHMARK.md), [model card](docs/MODEL_CARD.md).
+Sources: [split metrics](docs/results/detection_final_metrics.json), [benchmark conditions](docs/VIDEO_BENCHMARK.md), [model card](docs/MODEL_CARD.md).
 
-## What it does
-
-- Explore a MapLibre globe with NASA heat observations, official fire-weather danger and place forecasts.
-- Detect fire/smoke from a browser camera and queue annotated Telegram photos after persistent detections.
-- Inspect images and play original videos with aligned boxes, a detection timeline and seek prioritisation.
-- Review photo delivery attempts and download full-resolution annotated video exports.
+| Precision–Recall Curve | Confusion Matrix |
+| :---: | :---: |
+| ![Precision-Recall curve on the official D-Fire test split](docs/results/dfire_official_test_PR_curve.png) | ![Confusion matrix on the official D-Fire test split](docs/results/dfire_official_test_confusion_matrix.png) |
+| *Official D-Fire test precision–recall curve* | *Official D-Fire test confusion matrix* |
 
 ## Interface
 
-| Fire danger | Image inspector |
-| --- | --- |
-| ![Fire danger](docs/screenshots/fire-danger.png) | ![Annotated image](docs/screenshots/image-inspector.png) |
-| ![Real NASA heat observations](docs/screenshots/satellite-detections.png) | ![Video studio](docs/screenshots/video-studio.png) |
-| ![Simulated camera detection](docs/screenshots/live-camera.png) | ![Recorded Telegram alert](docs/screenshots/alerts.png) |
-| ![Telegram delivery proof](docs/screenshots/telegram-delivery-proof.png) | **Delivery proof** · 27 Oct 2026 · Smoke 73%. |
+| Fire Danger Map | Image Inspector |
+| :---: | :---: |
+| ![Copernicus GWIS Fire Weather Index overlay across the Mediterranean](docs/screenshots/fire-danger.png) | ![Still image inspector showing bounding boxes and confidence scores](docs/screenshots/image-inspector.png) |
+| *Copernicus GWIS fire danger categories mapped in MapLibre GL* | *Single-frame inspection with bounding boxes and confidence scores* |
 
-Satellite points show actual NASA observations. The Earth-to-city GIF above demonstrates 3D buildings.
+| Live Camera Alert |
+| :---: |
+| ![Live camera view identifying smoke with persistent detection alert](docs/screenshots/live-camera.png) |
+| *Live browser camera monitoring with IoU persistence filtering* |
 
-The Alerts showcase includes the author's Telegram photo alert from 27 October 2026.
-
-[Media sources and capture status](docs/media/CREDITS.md)
-
-Maps: EOxCloudless by [EOX](https://eox.at/) (modified Copernicus Sentinel data 2025),
-OpenFreeMap, © OpenMapTiles, © OpenStreetMap contributors. [Terms](THIRD_PARTY_NOTICES.md).
-
-## Quick start
-
-[Complete setup: installation, NASA key, Telegram and first run](docs/GUIDE.md)
-
-Use Python 3.11. Create the environment, install, then launch using its interpreter.
-
-Windows PowerShell:
-
-```powershell
-python -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-.venv\Scripts\python.exe scripts/run_app.py
-```
-
-Linux/macOS:
-
-```sh
-python3.11 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python scripts/run_app.py
-```
-
-Open [localhost:8501](http://127.0.0.1:8501). Copy `.env.example` to `.env` and supply your
-own FIRMS key and Telegram credentials for those integrations. Image/video inference uses
-the supplied checkpoint. [Guide](docs/GUIDE.md) covers setup and troubleshooting;
-[deployment](docs/DEPLOYMENT.md) covers services and refresh.
+For the complete interface gallery, video studio views, map credits, and Telegram delivery proof, see [Interface Screenshots](docs/SCREENSHOTS.md).
 
 ## How it works
 
@@ -93,13 +106,7 @@ flowchart LR
   Rules --> Telegram[Queued Telegram photos]
 ```
 
-[Architecture](docs/ARCHITECTURE.md) explains caching, frame lookup and hardware fallbacks.
-
-## Results
-
-![Official D-Fire test precision–recall curve](docs/results/dfire_official_test_PR_curve.png)
-
-[Training and evaluation](docs/TRAINING.md) documents dataset preparation and held-out testing.
+[Architecture](docs/ARCHITECTURE.md) explains caching, frame lookup and hardware fallbacks. [Training and evaluation](docs/TRAINING.md) documents dataset preparation and held-out testing.
 
 ## Limits
 
@@ -116,6 +123,25 @@ flowchart LR
 Headless multi-camera monitoring; held-out false-alarm and time-to-alert evaluation;
 optional API authentication and deployment hardening. These are planned capabilities.
 
+## Development
+
+Install development dependencies and verify the test suite:
+
+```bash
+pip install -r requirements-dev.txt
+npm ci
+
+# Quality gates (all must pass)
+ruff check .
+pytest -q
+npm test
+npm run format:check
+python scripts/check_docs.py
+```
+
+Set `MEDFIRE_SKIP_WARMUP=1` to run tests without loading model weights into memory.
+See [Contributing Guide](CONTRIBUTING.md) for code style guidelines and [Changelog](CHANGELOG.md) for version history.
+
 ## Stack and layout
 
 Python 3.11, FastAPI, Streamlit, Ultralytics YOLOv8, PyTorch, OpenCV, FFmpeg,
@@ -131,11 +157,12 @@ MapLibre GL JS, NumPy, pandas, pytest and Node.js tests.
 
 ## Credits and licenses
 
-Code: [AGPL-3.0](LICENSE), copyright Jasser Zormati. Provider and dataset rights remain
-separate; free EOX imagery and free Open-Meteo access have non-commercial conditions.
-[Third-party notices](THIRD_PARTY_NOTICES.md) covers attribution, share-alike and unresolved
-original-image permissions. See [data sources](docs/DATA.md).
+Code is released under the [AGPL-3.0 License](LICENSE), copyright Jasser Zormati.
+Provider and dataset terms apply separately; see [Third-Party Notices](THIRD_PARTY_NOTICES.md) and [Data Sources](docs/DATA.md).
 
 ## Author
 
 Jasser Zormati · [LinkedIn](https://linkedin.com/in/jasser-zormati) · [GitHub](https://github.com/jasser-z)
+
+[ci-badge]: https://github.com/jasser-z/medfire-watch/actions/workflows/ci.yml/badge.svg
+[ci]: https://github.com/jasser-z/medfire-watch/actions/workflows/ci.yml

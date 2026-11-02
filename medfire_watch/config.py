@@ -15,7 +15,8 @@ def load_env() -> None:
     """Load local environment variables from .env if present."""
     env_path = PROJECT_ROOT / ".env"
     if env_path.exists():
-        load_dotenv(env_path, override=False)
+        is_testing = "PYTEST_CURRENT_TEST" in os.environ
+        load_dotenv(env_path, override=not is_testing)
 
 
 def read_yaml(path: str | Path) -> dict[str, Any]:

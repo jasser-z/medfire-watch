@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import uuid
 from pathlib import Path
@@ -12,6 +13,8 @@ from medfire_watch.config import PROJECT_ROOT
 from medfire_watch.video import iter_video_detections
 
 from api.services import (
+    DEFAULT_VIDEO_DURATION_SECONDS,
+    DEFAULT_VIDEO_UPLOAD_MB,
     VIDEO_CONTENT_TYPES,
     VIDEO_FRAME_DETECTIONS,
     VIDEO_JOB_LOCK,
@@ -25,8 +28,32 @@ from api.services import (
     get_detection_service,
 )
 
+VIDEO_SUFFIX_MEDIA_TYPES = {
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".avi": "video/x-msvideo",
+    ".webm": "video/webm",
+}
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _get_max_video_jobs() -> int:
+    try:
+        return int(os.getenv("MEDFIRE_MAX_VIDEO_JOBS", "2"))
+    except ValueError:
+        return 2
+
+
+def _check_video_job_capacity() -> None:
+    with VIDEO_JOB_LOCK:
+        active = sum(
+            1
+            for status in VIDEO_JOB_STATUS.values()
+            if status.get("status") in {"queued", "processing", "exporting"}
+        )
+        if active >= _get_max_video_jobs():
+            raise HTTPException(status_code=429, detail="Maximum concurrent video jobs reached. Please retry later.")
 
 
 @router.get("/video-test", response_class=HTMLResponse)
@@ -52,8 +79,8 @@ def prepare_video_detector(service: Any = Depends(lambda: get_detection_service(
     return {
         "status": "ready",
         "video_encoder": "h264_nvenc" if nvenc_available() else "libx264",
-        "maximum_upload_bytes": getattr(service, "max_video_upload_bytes", 1024**3),
-        "maximum_duration_seconds": getattr(service, "max_video_duration_seconds", 600),
+        "maximum_upload_bytes": getattr(service, "max_video_upload_bytes", DEFAULT_VIDEO_UPLOAD_MB * 1024 * 1024),
+        "maximum_duration_seconds": getattr(service, "max_video_duration_seconds", DEFAULT_VIDEO_DURATION_SECONDS),
     }
 
 
@@ -87,6 +114,7 @@ async def _save_video_upload(video: UploadFile, service: DetectionService) -> tu
     suffix = Path(video.filename or "upload.mp4").suffix.lower()
     if suffix not in {".mp4", ".mov", ".avi", ".webm"}:
         suffix = ".mp4"
+    _check_video_job_capacity()
     video_id = uuid.uuid4().hex
     VIDEO_RESULT_DIR.mkdir(parents=True, exist_ok=True)
     input_path = VIDEO_RESULT_DIR / f"{video_id}_input{suffix}"
@@ -117,6 +145,7 @@ async def prepare_video_input(
     service: DetectionService = Depends(get_detection_service),
 ) -> dict[str, Any]:
     """Save a multipart video and prepare its first predictions."""
+    _check_video_job_capacity()
     video_id, input_path = await _save_video_upload(video, service)
     return await _prepare_saved_video(video_id, input_path, service)
 
@@ -130,6 +159,7 @@ async def stream_video_upload(
     """Save a streamed video and start background preparation."""
     if suffix not in {".mp4", ".mov", ".avi", ".webm"}:
         raise HTTPException(415, "Unsupported video extension.")
+    _check_video_job_capacity()
     video_id = uuid.uuid4().hex
     VIDEO_RESULT_DIR.mkdir(parents=True, exist_ok=True)
     path = VIDEO_RESULT_DIR / f"{video_id}_input{suffix}"
@@ -245,6 +275,13 @@ def _launch_video_job(
     with VIDEO_JOB_LOCK:
         if video_id in VIDEO_JOB_STATUS:
             return {"video_id": video_id, "status": VIDEO_JOB_STATUS[video_id]["status"]}
+        active = sum(
+            1
+            for status in VIDEO_JOB_STATUS.values()
+            if status.get("status") in {"queued", "processing", "exporting"}
+        )
+        if active >= _get_max_video_jobs():
+            raise HTTPException(status_code=429, detail="Maximum concurrent video jobs reached. Please retry later.")
         VIDEO_JOB_STATUS[video_id] = {
             "status": "queued",
             "fraction": 0.0,
@@ -336,7 +373,14 @@ def _launch_video_job(
                     {"status": "failed", "error": f"Video processing failed ({type(exc).__name__})."}
                 )
         finally:
-            pass  # Retain the source for native browser playback while the job is inspected.
+            with VIDEO_JOB_LOCK:
+                status_info = VIDEO_JOB_STATUS.get(video_id, {})
+                status_val = status_info.get("status")
+                keep_source = status_val == "complete" and video_id in VIDEO_SOURCE_PATHS
+            if not keep_source:
+                input_path.unlink(missing_ok=True)
+                with VIDEO_JOB_LOCK:
+                    VIDEO_SOURCE_PATHS.pop(video_id, None)
 
     threading.Thread(target=run_job, name=f"video-job-{video_id[:8]}", daemon=True).start()
     return {"video_id": video_id, "status": "queued"}
@@ -348,7 +392,8 @@ def video_source(video_id: str) -> FileResponse:
     path = VIDEO_SOURCE_PATHS.get(video_id)
     if path is None or not path.is_file():
         raise HTTPException(404, "Source video is unavailable.")
-    return FileResponse(path, media_type="video/mp4")
+    media_type = VIDEO_SUFFIX_MEDIA_TYPES.get(path.suffix.lower(), "video/mp4")
+    return FileResponse(path, media_type=media_type)
 
 
 @router.get("/video-jobs/{video_id}/frames")

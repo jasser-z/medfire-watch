@@ -34,3 +34,13 @@ def test_api_health() -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+def test_real_warmup_smoke() -> None:
+    """Run real warm-up smoke test against DetectionService."""
+    from api.services import DetectionService
+
+    service = DetectionService()
+    assert not service._warmed
+    service.warmup()
+    assert service._warmed is True

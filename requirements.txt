@@ -15,3 +15,4 @@ pillow>=10
 opencv-python>=4.8
 shapely>=2.0,<3
 pyshp>=2.3,<3
+defusedxml>=0.7.1

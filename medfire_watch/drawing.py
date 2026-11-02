@@ -1,23 +1,32 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Any
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 
+@lru_cache(maxsize=32)
+def _get_font(font_size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    try:
+        return ImageFont.truetype("arial.ttf", font_size)
+    except OSError:
+        return ImageFont.load_default()
+
+
 def draw_detections(image: np.ndarray, detections: list[dict[str, Any]]) -> np.ndarray:
     """Draw fire and smoke boxes with readable, image-scaled labels."""
     if image.ndim != 3 or image.shape[2] != 3:
         raise ValueError("Expected a three-channel BGR image.")
+    if not detections:
+        return image.copy()
+
     height, width = image.shape[:2]
     scale = max(min(width, height) / 720, 0.75)
     line_width = max(2, round(scale * 3))
     font_size = max(14, round(20 * scale))
-    try:
-        font = ImageFont.truetype("arial.ttf", font_size)
-    except OSError:
-        font = ImageFont.load_default()
+    font = _get_font(font_size)
 
     rgb_image = Image.fromarray(image[:, :, ::-1])
     draw = ImageDraw.Draw(rgb_image)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -16,9 +17,19 @@ logger = logging.getLogger(__name__)
 
 def _world_refresh_loop(stop: threading.Event) -> None:
     """Keep the feed current even when browsers throttle or close their tabs."""
+    last_retention = 0.0
     while not stop.is_set():
         # Check once a minute; refresh_if_old gates network requests on the ten-minute cache.
         _refresh_map_data()
+        now = time.monotonic()
+        if now - last_retention >= 600:
+            try:
+                from medfire_watch.retention import sweep_retention
+
+                sweep_retention()
+            except Exception as exc:
+                logger.warning("Retention sweep failed (%s).", type(exc).__name__)
+            last_retention = now
         if stop.wait(60):
             break
 
@@ -41,7 +52,6 @@ def satellite_map() -> str:
     """Serve the map document with versioned browser assets."""
     from medfire_watch.map_assets import map_asset_version
 
-    threading.Thread(target=_refresh_map_data, daemon=True).start()
     html = (PROJECT_ROOT / "dashboard" / "satellite_map.html").read_text(encoding="utf-8")
     return html.replace("/world-map/app.mjs", "/world-map/app.mjs?v=" + map_asset_version())
 
@@ -51,8 +61,9 @@ def satellite_map_data() -> dict[str, Any]:
     """Return cached observations and satellite refresh status."""
     from medfire_watch.world_hotspots import WORLD_PATH, load_world_hotspots, refresh_in_progress
 
-    threading.Thread(target=_refresh_map_data, daemon=True).start()
     if not WORLD_PATH.exists():
+        if not refresh_in_progress():
+            threading.Thread(target=_refresh_map_data, daemon=True).start()
         raise HTTPException(503, "Satellite data is loading.")
     return {
         "world": load_world_hotspots(),
@@ -61,15 +72,25 @@ def satellite_map_data() -> dict[str, Any]:
     }
 
 
+_COUNTRIES_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_COUNTRIES_LOCK = threading.Lock()
+
+
 @router.get("/world-map/countries/{kind}")
 def countries(kind: str) -> dict[str, Any]:
-    """Load the requested country boundaries or label catalogue."""
+    """Load the requested country boundaries or label catalogue, cached by file mtime."""
     if kind not in {"labels", "boundaries"}:
         raise HTTPException(404, "Country layer not found.")
     path = PROJECT_ROOT / "data" / "geospatial" / f"country_{kind}.json"
     if not path.is_file():
         raise HTTPException(503, "Country data is unavailable.")
-    return json.loads(path.read_text(encoding="utf-8"))
+    mtime = path.stat().st_mtime
+    with _COUNTRIES_LOCK:
+        if kind in _COUNTRIES_CACHE and _COUNTRIES_CACHE[kind][0] == mtime:
+            return _COUNTRIES_CACHE[kind][1]
+        data = json.loads(path.read_text(encoding="utf-8"))
+        _COUNTRIES_CACHE[kind] = (mtime, data)
+        return data
 
 
 @router.get("/world-map/style.mjs")

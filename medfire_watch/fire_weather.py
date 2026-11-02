@@ -5,11 +5,13 @@ from __future__ import annotations
 import io
 import json
 import threading
-import xml.etree.ElementTree as ET
 from datetime import date as Date
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+import defusedxml.ElementTree as ET
 import requests
 from PIL import Image
 
@@ -18,6 +20,9 @@ from medfire_watch.config import PROJECT_ROOT
 SERVICE = "https://maps.effis.emergency.copernicus.eu/gwis"
 CACHE = PROJECT_ROOT / "data/fire_weather"
 LOCK = threading.Lock()
+_FETCH_IN_PROGRESS = False
+_FETCH_EVENT = threading.Event()
+_FETCH_EVENT.set()
 CLASSES = [
     {"name": name, "upper": upper}
     for name, upper in [
@@ -42,25 +47,57 @@ def _today_metadata(saved: dict, timezone_name: str) -> dict:
     }
 
 
+def _read_cached_metadata(path: Path) -> dict | None:
+    if path.exists():
+        try:
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            checked = datetime.fromisoformat(saved["checked_utc"]).astimezone(timezone.utc)
+            now = datetime.now(timezone.utc)
+            if (
+                0 <= (now - checked).total_seconds() < 900
+                and checked.date() == now.date()
+                and saved.get("latest_available_date")
+            ):
+                return saved
+        except (KeyError, TypeError, ValueError, OSError):
+            pass
+    return None
+
+
 def metadata(timezone_name: str = "UTC") -> dict:
     # Validate before network access; the shared provider cache is timezone-independent.
     """Load current provider fire-weather dates and issue metadata."""
     ZoneInfo(timezone_name)
     path = CACHE / "metadata.json"
+
+    # Fast path: check valid cache without holding any lock (readers are never blocked)
+    cached = _read_cached_metadata(path)
+    if cached is not None:
+        return _today_metadata(cached, timezone_name)
+
+    global _FETCH_IN_PROGRESS
     with LOCK:
-        if path.exists():
-            try:
-                saved = json.loads(path.read_text(encoding="utf-8"))
-                checked = datetime.fromisoformat(saved["checked_utc"]).astimezone(timezone.utc)
-                now = datetime.now(timezone.utc)
-                if (
-                    0 <= (now - checked).total_seconds() < 900
-                    and checked.date() == now.date()
-                    and saved.get("latest_available_date")
-                ):
-                    return _today_metadata(saved, timezone_name)
-            except (KeyError, TypeError, ValueError, OSError):
-                pass  # Old or corrupt cache is not evidence that today's forecast is available.
+        # Second check after acquiring lock in case another thread just fetched
+        cached = _read_cached_metadata(path)
+        if cached is not None:
+            return _today_metadata(cached, timezone_name)
+
+        if _FETCH_IN_PROGRESS:
+            event_to_wait = _FETCH_EVENT
+            must_fetch = False
+        else:
+            _FETCH_IN_PROGRESS = True
+            _FETCH_EVENT.clear()
+            must_fetch = True
+
+    if not must_fetch:
+        event_to_wait.wait(timeout=35)
+        cached = _read_cached_metadata(path)
+        if cached is not None:
+            return _today_metadata(cached, timezone_name)
+        return metadata(timezone_name)
+
+    try:
         response = requests.get(
             SERVICE, params={"service": "WMS", "version": "1.1.1", "request": "GetCapabilities"}, timeout=(8, 30)
         )
@@ -86,6 +123,10 @@ def metadata(timezone_name: str = "UTC") -> dict:
         temporary.write_text(json.dumps(payload), encoding="utf-8")
         temporary.replace(path)
         return _today_metadata(payload, timezone_name)
+    finally:
+        with LOCK:
+            _FETCH_IN_PROGRESS = False
+            _FETCH_EVENT.set()
 
 
 def tile(date: str, z: int, x: int, y: int) -> bytes:
@@ -127,5 +168,7 @@ def tile(date: str, z: int, x: int, y: int) -> bytes:
     with Image.open(io.BytesIO(response.content)) as image:
         image.verify()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(response.content)
+    temp_path = path.with_name(f"{path.stem}_{uuid4().hex}.part")
+    temp_path.write_bytes(response.content)
+    temp_path.replace(path)
     return response.content

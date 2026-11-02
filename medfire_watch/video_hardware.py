@@ -171,7 +171,8 @@ class VideoReader:
             self.capture.release()
 
     def _read_gpu(self) -> np.ndarray | None:
-        assert self.process is not None and self.process.stdout is not None
+        if self.process is None or self.process.stdout is None:
+            raise RuntimeError("GPU video decoder process is not running.")
         size = self.width * self.height * 3
         data = self.process.stdout.read(size)
         if not data:

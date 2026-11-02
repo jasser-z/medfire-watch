@@ -10,8 +10,18 @@ python scripts/run_app.py
 Open [dashboard](http://127.0.0.1:8501); the [API](http://127.0.0.1:8000/health)
 runs on port 8000. The launcher supports `--restart`, `--stop`, `--api-port` and
 `--dashboard-port`. It checks process ownership before replacing local services.
-Logs are in `logs/`. Runtime caches live under `data/satellite` and `data/fire_weather`;
+Logs are in `logs/` (with automatic startup rotation for `logs/api.log` and `logs/dashboard.log`).
+Runtime caches live under `data/satellite` and `data/fire_weather`; completed video results
+under `runs/video_results` and cache tiles are automatically swept after `MEDFIRE_VIDEO_TTL_HOURS` (default 24h);
 camera snapshots live under `runs/webcam_alerts`.
+
+## Security hardening
+
+- **Host and Origin Protection**: By default, requests are restricted to loopback interfaces. Configure
+  `MEDFIRE_ALLOWED_HOSTS` and `MEDFIRE_ALLOWED_ORIGINS` when hosting behind reverse proxies or external hostnames.
+- **API Token**: Set `MEDFIRE_API_TOKEN` to require `X-MedFire-Token` on write, upload, and deletion endpoints.
+- **Concurrent Video Limits**: Concurrent video jobs are throttled by `MEDFIRE_MAX_VIDEO_JOBS` (default 2)
+  to preserve server memory and CPU/GPU resources. Extra requests receive HTTP 429.
 
 ## Windows scheduled refresh
 

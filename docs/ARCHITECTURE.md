@@ -35,5 +35,21 @@ NVDEC/CUDA scaling and NVENC are used when available, with CPU fallbacks.
 
 Live camera sends 960-pixel detector copies separately from native video rendering.
 Photo alerts use elapsed-time persistence and overlapping boxes. The queued photo comes
-from the same full-resolution source frame. See [model card](MODEL_CARD.md) for thresholds
+from the same full-resolution source frame. Browser sessions track detection persistence independently using the `X-Camera-Session`
+identifier, bounded by a 256 MB memory queue and a 5-minute idle session eviction. Dedicated camera alert
+cooldowns (default 5 minutes) prevent duplicate Telegram notifications.
+
+## Security and resource management
+
+- **API guard middleware**: Validates incoming `Host` headers (`127.0.0.1`, `localhost`, `[::1]`,
+  and `MEDFIRE_ALLOWED_HOSTS`), blocks untrusted cross-origin mutating requests (`MEDFIRE_ALLOWED_ORIGINS`),
+  and requires `X-MedFire-Token` when `MEDFIRE_API_TOKEN` is set.
+- **Resource cleanup**: A background retention sweep runs every 10 minutes, pruning completed video
+  artifacts and weather cache files older than `MEDFIRE_VIDEO_TTL_HOURS` (default 24h).
+- **Concurrency control**: Asynchronous video jobs are capped at `MEDFIRE_MAX_VIDEO_JOBS` (default 2),
+  rejecting surplus processing requests with HTTP 429.
+- **Provider concurrency**: Fire-weather metadata employs double-checked locking, keeping network
+  fetches outside global critical sections, while nearest town lookups use precomputed vectorized radian arrays.
+
+See [model card](MODEL_CARD.md) for thresholds
 and [limits](LIMITATIONS.md) for interpretation.

@@ -54,6 +54,22 @@ def validate_launch(args: argparse.Namespace) -> None:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def rotate_log_file(log_path: Path, max_bytes: int = 5 * 1024 * 1024, backup_count: int = 3) -> None:
+    """Rotate log file on startup if it exceeds max_bytes."""
+    if not log_path.is_file():
+        return
+    try:
+        if log_path.stat().st_size >= max_bytes:
+            for i in range(backup_count - 1, 0, -1):
+                src = log_path.with_name(f"{log_path.name}.{i}")
+                dst = log_path.with_name(f"{log_path.name}.{i + 1}")
+                if src.is_file():
+                    src.replace(dst)
+            log_path.replace(log_path.with_name(f"{log_path.name}.1"))
+    except OSError:
+        pass
+
+
 def start_process(command: list[str], log_path: Path, env: dict[str, str] | None = None) -> subprocess.Popen[bytes]:
     with log_path.open("ab") as log_file:
         return subprocess.Popen(
@@ -188,7 +204,7 @@ def handle_existing_services(args: argparse.Namespace) -> bool:
     raise SystemExit(1)
 
 
-def wait_for_http(url: str, process: subprocess.Popen[bytes], timeout: float = 45.0) -> bytes:
+def wait_for_http(url: str, process: subprocess.Popen[bytes], timeout: float = 120.0) -> bytes:
     deadline = time.monotonic() + timeout
     last_error: Exception | None = None
     while time.monotonic() < deadline:
@@ -253,6 +269,8 @@ def main() -> None:
     dashboard_url = f"http://{args.host}:{args.dashboard_port}"
     api_log = LOG_DIR / "api.log"
     dashboard_log = LOG_DIR / "dashboard.log"
+    rotate_log_file(api_log)
+    rotate_log_file(dashboard_log)
     api_process: subprocess.Popen[bytes] | None = None
     dashboard_process: subprocess.Popen[bytes] | None = None
     try:

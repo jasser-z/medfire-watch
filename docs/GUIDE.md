@@ -178,7 +178,28 @@ Allow browser camera permission and press Start camera. Negotiated dimensions an
 appear beside the detector update rate. Fullscreen includes video, boxes and status.
 Configure `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` locally. Open the bot, press Start,
 and use Connect Telegram chat if needed. Alerts lists attempts and confirmed delivery.
-Delete all clears local history and snapshots; existing Telegram messages stay in Telegram.
+Delete all includes a confirmation prompt before clearing local history and snapshots;
+existing Telegram messages stay in Telegram.
+
+Camera alerts use a dedicated `camera_cooldown_minutes` setting (default 5 minutes in
+`configs/alerts.yaml`) separate from the 60-minute cooldown of other alerts. Multiple
+browser tabs maintain isolated detection sessions via `X-Camera-Session` tracking with
+a 5-minute idle eviction and a 256 MB memory budget.
+
+## Configuration variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `FIRMS_MAP_KEY` | None | NASA FIRMS MAP_KEY for 24-hour satellite heat observations |
+| `TELEGRAM_BOT_TOKEN` | None | Telegram bot token from BotFather |
+| `TELEGRAM_CHAT_ID` | None | Telegram recipient chat ID for alert dispatch |
+| `MEDFIRE_API_TOKEN` | None | Optional secret token requiring `X-MedFire-Token` header on write endpoints |
+| `MEDFIRE_ALLOWED_HOSTS` | None | Extra comma-separated allowed Host headers beyond localhost/127.0.0.1 |
+| `MEDFIRE_ALLOWED_ORIGINS` | None | Extra comma-separated allowed origins for cross-origin mutation requests |
+| `MEDFIRE_VIDEO_TTL_HOURS` | `24` | Hours to retain completed video analysis results and weather cache tiles |
+| `MEDFIRE_MAX_VIDEO_JOBS` | `2` | Maximum concurrent video processing jobs before returning HTTP 429 |
+| `MEDFIRE_INCLUDE_LOW_CONFIDENCE` | `0` | Set to `1` to include low-confidence VIIRS satellite hotspots |
+| `MEDFIRE_SKIP_WARMUP` | `0` | Set to `1` to bypass heavy YOLO inference warmup during launch/tests |
 
 ## Image and video inspection
 

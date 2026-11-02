@@ -56,34 +56,97 @@ def _draw_detections(frame: np.ndarray, detections: list[dict[str, Any]]) -> np.
     return draw_detections(frame, detections)
 
 
-def iter_video_detections(
-    input_path: Path,
-    output_path: Path,
-    infer: Callable[[np.ndarray], dict[str, Any]],
-    consecutive_frames: int = 5,
-    max_duration_seconds: float = 120,
-    infer_batch: Callable[[list[np.ndarray]], list[dict[str, Any]]] | None = None,
-    batch_size: int = 8,
-    initial_results: list[dict[str, Any]] | None = None,
-) -> Iterator[dict[str, Any]]:
-    """Yield export progress and final frame-preserving video results."""
-    if batch_size < 1:
-        raise ValueError("Video inference batch size must be at least one.")
-    elapsed_start = time.perf_counter()
-    capture = VideoReader(input_path)
-    fps, width, height, frame_count = capture.fps, capture.width, capture.height, capture.frame_count
-    duration_seconds = frame_count / fps if frame_count > 0 else 0
-    if duration_seconds > max_duration_seconds:
-        capture.close()
-        raise ValueError(f"Video duration exceeds the {max_duration_seconds:g}-second limit.")
+class VideoFrameReader(threading.Thread):
+    """Worker thread that reads video frames into a bounded queue."""
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    import imageio_ffmpeg
+    def __init__(
+        self,
+        capture: VideoReader,
+        frame_queue: queue.Queue[np.ndarray | None],
+        stop_event: threading.Event,
+    ) -> None:
+        super().__init__(name="medfire-video-reader", daemon=True)
+        self.capture = capture
+        self.frame_queue = frame_queue
+        self.stop_event = stop_event
+        self.frames_decoded = 0
+        self.errors: list[Exception] = []
 
-    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
-    raw_output_path = output_path.with_name(f"{output_path.stem}.video-only.mp4")
-    encoder_name, codec_arguments = encoder_arguments(width, height)
-    encoder = subprocess.Popen(
+    def run(self) -> None:
+        try:
+            while not self.stop_event.is_set():
+                success, frame = self.capture.read()
+                if not success:
+                    break
+                self.frames_decoded += 1
+                while not self.stop_event.is_set():
+                    try:
+                        self.frame_queue.put(frame, timeout=0.2)
+                        break
+                    except queue.Full:
+                        continue
+        except Exception as exc:
+            self.errors.append(exc)
+        finally:
+            while not self.stop_event.is_set():
+                try:
+                    self.frame_queue.put(None, timeout=0.2)
+                    break
+                except queue.Full:
+                    continue
+
+
+class VideoFrameEncoder(threading.Thread):
+    """Worker thread that annotates and writes frames into an FFmpeg stdin pipe."""
+
+    def __init__(
+        self,
+        encoder: subprocess.Popen,
+        encode_queue: queue.Queue[tuple[np.ndarray, list[dict[str, Any]], int] | None],
+    ) -> None:
+        super().__init__(name="medfire-video-encoder", daemon=True)
+        self.encoder = encoder
+        self.encode_queue = encode_queue
+        self.frames_encoded = 0
+        self.errors: list[Exception] = []
+
+    def run(self) -> None:
+        try:
+            while True:
+                item = self.encode_queue.get()
+                if item is None:
+                    break
+                frame, detections, _index = item
+                annotated = _draw_detections(frame, detections)
+                if self.encoder.stdin is None:
+                    raise RuntimeError("FFmpeg input pipe is unavailable.")
+                self.encoder.stdin.write(np.ascontiguousarray(annotated).tobytes())
+                self.frames_encoded += 1
+        except Exception as exc:
+            self.errors.append(exc)
+
+
+def build_detection_timeline(detection_seconds: set[int]) -> list[dict[str, int]]:
+    """Merge individual detection seconds into continuous intervals."""
+    timeline: list[dict[str, int]] = []
+    for second in sorted(detection_seconds):
+        if timeline and second <= timeline[-1]["end_seconds"] + 1:
+            timeline[-1]["end_seconds"] = second
+        else:
+            timeline.append({"start_seconds": second, "end_seconds": second})
+    return timeline
+
+
+def start_raw_encoder(
+    ffmpeg: str,
+    width: int,
+    height: int,
+    fps: float,
+    codec_arguments: list[str],
+    raw_output_path: Path,
+) -> subprocess.Popen:
+    """Launch the raw video encoder subprocess."""
+    return subprocess.Popen(
         [
             ffmpeg,
             "-hide_banner",
@@ -111,169 +174,41 @@ def iter_video_detections(
         creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
     )
 
-    alert_tracker = ConsecutiveDetectionAlert(consecutive_frames)
-    frame_index = 0
-    alert_events: list[dict[str, Any]] = []
-    detection_seconds: set[int] = set()
-    frame_queue: queue.Queue[np.ndarray | None] = queue.Queue(maxsize=batch_size * 4)
-    encode_queue: queue.Queue[tuple[np.ndarray, list[dict[str, Any]], int] | None] = queue.Queue(maxsize=batch_size * 2)
-    stop_reader = threading.Event()
-    reader_errors: list[Exception] = []
-    encoder_errors: list[Exception] = []
-    frames_encoded = 0
-    frames_decoded = 0
-    detector_device = "unknown"
-    detector_precision = "unknown"
-    first_detection_seconds: float | None = None
 
-    def encode_frames() -> None:
-        """Annotate and encode queued source-resolution frames."""
-        nonlocal frames_encoded
+def close_and_finalize_encoder(
+    encoder: subprocess.Popen,
+    writer: VideoFrameEncoder,
+    encode_queue: queue.Queue[tuple[np.ndarray, list[dict[str, Any]], int] | None],
+) -> None:
+    """Clean up and wait for the encoder worker and FFmpeg process."""
+    writer_deadline = time.perf_counter() + 60
+    while writer.is_alive() and time.perf_counter() < writer_deadline:
         try:
-            while True:
-                item = encode_queue.get()
-                if item is None:
-                    break
-                frame, detections, index = item
-                annotated = _draw_detections(frame, detections)
-                if encoder.stdin is None:
-                    raise RuntimeError("FFmpeg input pipe is unavailable.")
-                encoder.stdin.write(np.ascontiguousarray(annotated).tobytes())
-                frames_encoded += 1
-        except Exception as exc:
-            encoder_errors.append(exc)
-
-    writer = threading.Thread(target=encode_frames, name="medfire-video-encoder", daemon=True)
-    writer.start()
-
-    def read_frames() -> None:
-        """Read frames into the bounded export queue."""
-        nonlocal frames_decoded
-        try:
-            while not stop_reader.is_set():
-                success, frame = capture.read()
-                if not success:
-                    break
-                frames_decoded += 1
-                while not stop_reader.is_set():
-                    try:
-                        frame_queue.put(frame, timeout=0.2)
-                        break
-                    except queue.Full:
-                        continue
-        except Exception as exc:
-            reader_errors.append(exc)
-        finally:
-            while not stop_reader.is_set():
-                try:
-                    frame_queue.put(None, timeout=0.2)
-                    break
-                except queue.Full:
-                    continue
-
-    reader = threading.Thread(target=read_frames, name="medfire-video-reader", daemon=True)
-    reader.start()
+            encode_queue.put(None, timeout=0.2)
+            break
+        except queue.Full:
+            continue
+    writer.join(timeout=60)
+    if writer.is_alive():
+        encoder.kill()
+        writer.join(timeout=3)
+        raise RuntimeError("Video encoder worker timed out.")
+    if encoder.stdin is not None:
+        encoder.stdin.close()
     try:
-        while True:
-            frames: list[np.ndarray] = []
-            reached_end = False
-            while len(frames) < batch_size:
-                try:
-                    item = frame_queue.get(timeout=1)
-                except queue.Empty:
-                    if not reader.is_alive():
-                        reached_end = True
-                        break
-                    continue
-                if item is None:
-                    reached_end = True
-                    break
-                frames.append(item)
-            if not frames and reached_end:
-                break
-            cached = (initial_results or [])[frame_index : frame_index + len(frames)]
-            pending = frames[len(cached) :]
-            fresh = (
-                (infer_batch(pending) if infer_batch is not None else [infer(frame) for frame in pending])
-                if pending
-                else []
-            )
-            results = [*cached, *fresh]
-            if results:
-                detector_device = results[0].get("device", "unknown")
-                detector_precision = results[0].get("precision", "unknown")
-            if len(results) != len(frames):
-                raise RuntimeError("The batched detector returned a different number of results than input frames.")
-            for frame, result in zip(frames, results):
-                timestamp_seconds = frame_index / fps
-                detections = result["detections"]
-                detected = any(item["class"] in {"fire", "smoke"} for item in detections)
-                if detected:
-                    detection_seconds.add(int(timestamp_seconds))
-                alert = alert_tracker.update(detected, timestamp_seconds)
-                if alert is not None:
-                    alert_events.append(alert)
-                if first_detection_seconds is None:
-                    first_detection_seconds = time.perf_counter() - elapsed_start
-                while True:
-                    if encoder_errors:
-                        raise RuntimeError("Video encoder worker failed.") from encoder_errors[0]
-                    try:
-                        encode_queue.put((frame, detections, frame_index), timeout=0.2)
-                        break
-                    except queue.Full:
-                        continue
-                if frame_index % max(1, round(fps * 2)) == 0:
-                    yield {
-                        "type": "progress",
-                        "index": frame_index,
-                        "frames_processed": frame_index + 1,
-                        "fraction": min(1.0, (frame_index + 1) / frame_count) if frame_count > 0 else 0.0,
-                        "timestamp_seconds": timestamp_seconds,
-                    }
-                frame_index += 1
-            if reached_end:
-                break
-        if reader_errors:
-            raise RuntimeError("Video frame reader failed.") from reader_errors[0]
-    except Exception:
-        LOGGER.exception("Video detection failed while processing %s.", input_path.name)
-        raise
-    finally:
-        stop_reader.set()
-        reader.join(timeout=3)
-        capture.close()
-        writer_deadline = time.perf_counter() + 60
-        while writer.is_alive() and time.perf_counter() < writer_deadline:
-            try:
-                encode_queue.put(None, timeout=0.2)
-                break
-            except queue.Full:
-                continue
-        writer.join(timeout=60)
-        if writer.is_alive():
-            encoder.kill()
-            writer.join(timeout=3)
-            raise RuntimeError("Video encoder worker timed out.")
-        if encoder.stdin is not None:
-            encoder.stdin.close()
-        try:
-            encoder_status = encoder.wait(timeout=300)
-        except subprocess.TimeoutExpired:
-            encoder.kill()
-            encoder.wait()
-            raise RuntimeError("Video encoder timed out.") from None
-        if encoder_status != 0:
-            raise RuntimeError("Video encoder failed; verify codec availability.")
-        if encoder_errors:
-            raise RuntimeError("Video encoder worker failed.") from encoder_errors[0]
+        encoder_status = encoder.wait(timeout=300)
+    except subprocess.TimeoutExpired:
+        encoder.kill()
+        encoder.wait()
+        raise RuntimeError("Video encoder timed out.") from None
+    if encoder_status != 0:
+        raise RuntimeError("Video encoder failed; verify codec availability.")
+    if writer.errors:
+        raise RuntimeError("Video encoder worker failed.") from writer.errors[0]
 
-    if frames_encoded != frame_index or frames_decoded != frame_index:
-        raise RuntimeError(
-            f"Frame counts differ: decoded={frames_decoded}, inferred={frame_index}, encoded={frames_encoded}."
-        )
 
-    output_duration_seconds = frame_index / fps
+def finalize_video_output(ffmpeg: str, raw_output_path: Path, input_path: Path, output_path: Path) -> None:
+    """Combine annotated raw video with source audio into faststart MP4."""
     try:
         command = [
             ffmpeg,
@@ -309,18 +244,152 @@ def iter_video_detections(
     finally:
         raw_output_path.unlink(missing_ok=True)
 
+
+def _fetch_frame_batch(
+    frame_queue: queue.Queue[np.ndarray | None],
+    batch_size: int,
+    reader_is_alive: Callable[[], bool],
+) -> tuple[list[np.ndarray], bool]:
+    """Retrieve a batch of frames from the frame queue."""
+    frames: list[np.ndarray] = []
+    reached_end = False
+    while len(frames) < batch_size:
+        try:
+            item = frame_queue.get(timeout=1)
+        except queue.Empty:
+            if not reader_is_alive():
+                reached_end = True
+                break
+            continue
+        if item is None:
+            reached_end = True
+            break
+        frames.append(item)
+    return frames, reached_end
+
+
+def iter_video_detections(
+    input_path: Path,
+    output_path: Path,
+    infer: Callable[[np.ndarray], dict[str, Any]],
+    consecutive_frames: int = 5,
+    max_duration_seconds: float = 120,
+    infer_batch: Callable[[list[np.ndarray]], list[dict[str, Any]]] | None = None,
+    batch_size: int = 8,
+    initial_results: list[dict[str, Any]] | None = None,
+) -> Iterator[dict[str, Any]]:
+    """Yield export progress and final frame-preserving video results."""
+    if batch_size < 1:
+        raise ValueError("Video inference batch size must be at least one.")
+    elapsed_start = time.perf_counter()
+    capture = VideoReader(input_path)
+    fps, width, height, frame_count = capture.fps, capture.width, capture.height, capture.frame_count
+    duration_seconds = frame_count / fps if frame_count > 0 else 0
+    if duration_seconds > max_duration_seconds:
+        capture.close()
+        raise ValueError(f"Video duration exceeds the {max_duration_seconds:g}-second limit.")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    import imageio_ffmpeg
+
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    raw_output_path = output_path.with_name(f"{output_path.stem}.video-only.mp4")
+    encoder_name, codec_arguments = encoder_arguments(width, height)
+    encoder = start_raw_encoder(ffmpeg, width, height, fps, codec_arguments, raw_output_path)
+
+    alert_tracker = ConsecutiveDetectionAlert(consecutive_frames)
+    frame_index = 0
+    alert_events: list[dict[str, Any]] = []
+    detection_seconds: set[int] = set()
+    frame_queue: queue.Queue[np.ndarray | None] = queue.Queue(maxsize=batch_size * 4)
+    encode_queue: queue.Queue[tuple[np.ndarray, list[dict[str, Any]], int] | None] = queue.Queue(maxsize=batch_size * 2)
+    stop_reader = threading.Event()
+
+    writer = VideoFrameEncoder(encoder, encode_queue)
+    writer.start()
+
+    reader = VideoFrameReader(capture, frame_queue, stop_reader)
+    reader.start()
+
+    detector_device = "unknown"
+    detector_precision = "unknown"
+    first_detection_seconds: float | None = None
+
+    try:
+        while True:
+            frames, reached_end = _fetch_frame_batch(frame_queue, batch_size, reader.is_alive)
+            if not frames and reached_end:
+                break
+            cached = (initial_results or [])[frame_index : frame_index + len(frames)]
+            pending = frames[len(cached) :]
+            fresh = (
+                (infer_batch(pending) if infer_batch is not None else [infer(frame) for frame in pending])
+                if pending
+                else []
+            )
+            results = [*cached, *fresh]
+            if results:
+                detector_device = results[0].get("device", "unknown")
+                detector_precision = results[0].get("precision", "unknown")
+            if len(results) != len(frames):
+                raise RuntimeError("The batched detector returned a different number of results than input frames.")
+            for frame, result in zip(frames, results):
+                timestamp_seconds = frame_index / fps
+                detections = result["detections"]
+                detected = any(item["class"] in {"fire", "smoke"} for item in detections)
+                if detected:
+                    detection_seconds.add(int(timestamp_seconds))
+                alert = alert_tracker.update(detected, timestamp_seconds)
+                if alert is not None:
+                    alert_events.append(alert)
+                if first_detection_seconds is None:
+                    first_detection_seconds = time.perf_counter() - elapsed_start
+                while True:
+                    if writer.errors:
+                        raise RuntimeError("Video encoder worker failed.") from writer.errors[0]
+                    try:
+                        encode_queue.put((frame, detections, frame_index), timeout=0.2)
+                        break
+                    except queue.Full:
+                        continue
+                if frame_index % max(1, round(fps * 2)) == 0:
+                    yield {
+                        "type": "progress",
+                        "index": frame_index,
+                        "frames_processed": frame_index + 1,
+                        "fraction": min(1.0, (frame_index + 1) / frame_count) if frame_count > 0 else 0.0,
+                        "timestamp_seconds": timestamp_seconds,
+                    }
+                frame_index += 1
+            if reached_end:
+                break
+        if reader.errors:
+            raise RuntimeError("Video frame reader failed.") from reader.errors[0]
+    except Exception:
+        LOGGER.exception("Video detection failed while processing %s.", input_path.name)
+        raise
+    finally:
+        stop_reader.set()
+        reader.join(timeout=3)
+        capture.close()
+        close_and_finalize_encoder(encoder, writer, encode_queue)
+
+    if writer.frames_encoded != frame_index or reader.frames_decoded != frame_index:
+        raise RuntimeError(
+            f"Frame counts differ: decoded={reader.frames_decoded}, inferred={frame_index}, "
+            f"encoded={writer.frames_encoded}."
+        )
+
+    output_duration_seconds = frame_index / fps
+    finalize_video_output(ffmpeg, raw_output_path, input_path, output_path)
+
     elapsed = time.perf_counter() - elapsed_start
-    timeline = []
-    for second in sorted(detection_seconds):
-        if timeline and second <= timeline[-1]["end_seconds"] + 1:
-            timeline[-1]["end_seconds"] = second
-        else:
-            timeline.append({"start_seconds": second, "end_seconds": second})
+    timeline = build_detection_timeline(detection_seconds)
     yield {
         "type": "complete",
         "frames_processed": frame_index,
-        "frames_encoded": frames_encoded,
-        "input_frames": frames_decoded,
+        "frames_encoded": writer.frames_encoded,
+        "input_frames": reader.frames_decoded,
         "source_metadata_frames": frame_count,
         "video_decoder": capture.backend,
         "video_encoder": encoder_name,

@@ -36,3 +36,9 @@ not additional model-evaluation evidence. The camera demonstration uses a record
 `demo.gif` illustrates video detection. `earth-weather-3d.gif` illustrates provider weather colours,
 satellite observations and 3D cartography. The map animation captures fully loaded browser frames,
 excluding network waits from playback. No source audio is included.
+
+## Social preview
+
+`social-preview.png` is a generated project asset (1280×640 px) created by `scripts/make_social_preview.py`
+using Pillow. It contains only project text, metrics and decorative geometry; no EOX, OSM or third-party
+map imagery is included.

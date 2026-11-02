@@ -19,11 +19,13 @@ class AlertManager:
     def __init__(
         self,
         cooldown_minutes: int = 60,
+        camera_cooldown_minutes: int = 5,
         state_path: Path | None = None,
     ) -> None:
-        if cooldown_minutes < 0:
+        if cooldown_minutes < 0 or camera_cooldown_minutes < 0:
             raise ValueError("Alert cooldown cannot be negative.")
         self.cooldown_minutes = cooldown_minutes
+        self.camera_cooldown_minutes = camera_cooldown_minutes
         self.state_path = state_path or PROJECT_ROOT / "runs" / "alerts" / "telegram_state.json"
         self.log_path = self.state_path.with_name("telegram_sent.jsonl")
         self.failure_log_path = self.state_path.with_name("telegram_failed.jsonl")
@@ -84,7 +86,8 @@ class AlertManager:
             raise FileNotFoundError(f"Alert configuration is missing: {config_path}")
         config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
         return cls(
-            int(config.get("cooldown_minutes", 60)),
+            cooldown_minutes=int(config.get("cooldown_minutes", 60)),
+            camera_cooldown_minutes=int(config.get("camera_cooldown_minutes", 5)),
         )
 
     def status(self) -> dict[str, Any]:
@@ -96,6 +99,7 @@ class AlertManager:
             "bot_token_present": bool(token),
             "chat_id_present": bool(chat_id),
             "cooldown_minutes": self.cooldown_minutes,
+            "camera_cooldown_minutes": self.camera_cooldown_minutes,
         }
 
     @staticmethod
@@ -135,9 +139,12 @@ class AlertManager:
             chat = message.get("chat") or {}
             if chat.get("type") == "private" and chat.get("id") is not None:
                 candidates.append(str(chat["id"]))
-        if not candidates:
+        distinct_chats = sorted(set(candidates))
+        if not distinct_chats:
             raise LookupError("No private chat was found. Open the bot and send it a message first.")
-        chat_id = candidates[-1]
+        if len(distinct_chats) > 1:
+            raise LookupError("Multiple private chats found. Remove extra chats or set TELEGRAM_CHAT_ID manually.")
+        chat_id = distinct_chats[0]
         self._save_chat_id(chat_id)
         return chat_id
 
@@ -166,7 +173,8 @@ class AlertManager:
         previous = state.get(dedupe_key)
         if previous:
             sent_at = datetime.fromisoformat(previous)
-            if now - sent_at < timedelta(minutes=self.cooldown_minutes):
+            cooldown = self.camera_cooldown_minutes if kind == "live_camera" else self.cooldown_minutes
+            if now - sent_at < timedelta(minutes=cooldown):
                 return {"sent": False, "reason": "cooldown"}
 
         base_url = f"https://api.telegram.org/bot{token}"
@@ -189,6 +197,15 @@ class AlertManager:
                 )
             response.raise_for_status()
             result = response.json()
+        except requests.HTTPError as exc:
+            detail = None
+            if hasattr(exc, "response") and exc.response is not None:
+                try:
+                    detail = exc.response.json().get("description")
+                except Exception:
+                    detail = None
+            msg = f": {detail}" if detail else ""
+            raise RuntimeError(f"Telegram did not confirm delivery{msg}.") from exc
         except (OSError, requests.RequestException, ValueError):
             raise RuntimeError("Telegram did not confirm delivery; no message was recorded as sent.") from None
         if not result.get("ok"):

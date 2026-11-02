@@ -69,6 +69,7 @@ Thumbs.db
 !/docs/screenshots/*.jpg
 !/docs/screenshots/*.png
 !/docs/media/*.gif
+!/docs/media/*.png
 
 # Additional build, test and temporary outputs
 .venv*/

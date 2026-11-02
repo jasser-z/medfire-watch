@@ -33,7 +33,7 @@ def local_weather(latitude: float, longitude: float, date: str, timezone_name: s
     folder = PROJECT_ROOT / "data/fire_weather/place_weather"
     folder.mkdir(parents=True, exist_ok=True)
     zone_key = sha256(timezone_name.encode()).hexdigest()[:12]
-    path = folder / f"current_{latitude:.3f}_{longitude:.3f}_{date}_{zone_key}.json"
+    path = folder / f"current_{latitude:.2f}_{longitude:.2f}_{date}_{zone_key}.json"
     if path.exists() and datetime.now(timezone.utc).timestamp() - path.stat().st_mtime < 900:
         # Local-date validation prevents a warm cache from presenting yesterday as today.
         saved = json.loads(path.read_text(encoding="utf-8"))

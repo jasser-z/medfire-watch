@@ -9,3 +9,8 @@ temporal_alert:
 video:
   maximum_upload_mb: 1024
   maximum_duration_seconds: 600
+live_alert:
+  confidence: 0.5
+  min_box_fraction: 0.01
+  persistence_seconds: 1.0
+  min_iou: 0.3

@@ -67,3 +67,17 @@ def test_partial_instance_requires_explicit_restart(monkeypatch):
     monkeypatch.setattr(launcher, "stop_workspace_services", lambda processes: stopped.extend(processes))
     assert not launcher.handle_existing_services(arguments(restart=True))
     assert [process.pid for process in stopped] == [123]
+
+
+def test_rotate_log_file(tmp_path: Path) -> None:
+    log_file = tmp_path / "test.log"
+    # Small file not rotated
+    log_file.write_text("hello", encoding="utf-8")
+    launcher.rotate_log_file(log_file, max_bytes=100)
+    assert log_file.is_file()
+    assert not (tmp_path / "test.log.1").exists()
+
+    # Exceeding file rotated
+    log_file.write_text("x" * 200, encoding="utf-8")
+    launcher.rotate_log_file(log_file, max_bytes=100)
+    assert (tmp_path / "test.log.1").is_file()

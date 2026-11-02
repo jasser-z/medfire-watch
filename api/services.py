@@ -15,6 +15,8 @@ DETECTION_WEIGHTS_PATH = PROJECT_ROOT / "models" / "detection" / "weights" / "be
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_IMAGE_PIXELS = 25_000_000
 DETECTION_CONFIG_PATH = PROJECT_ROOT / "configs" / "detection.yaml"
+DEFAULT_VIDEO_UPLOAD_MB = 1024
+DEFAULT_VIDEO_DURATION_SECONDS = 600.0
 VIDEO_RESULT_DIR = PROJECT_ROOT / "runs" / "video_results"
 VIDEO_CONTENT_TYPES = {
     "video/mp4",
@@ -41,8 +43,16 @@ class DetectionService:
         if not 0 < self.confidence_threshold < 1:
             raise ValueError("Detector confidence threshold must be between zero and one.")
         self.consecutive_alert_frames = int(detection_config.get("temporal_alert", {}).get("consecutive_frames", 5))
-        self.max_video_upload_bytes = int(detection_config.get("video", {}).get("maximum_upload_mb", 100)) * 1024 * 1024
-        self.max_video_duration_seconds = float(detection_config.get("video", {}).get("maximum_duration_seconds", 120))
+        video_cfg = detection_config.get("video", {})
+        self.max_video_upload_bytes = int(video_cfg.get("maximum_upload_mb", DEFAULT_VIDEO_UPLOAD_MB)) * 1024 * 1024
+        self.max_video_duration_seconds = float(
+            video_cfg.get("maximum_duration_seconds", DEFAULT_VIDEO_DURATION_SECONDS)
+        )
+        live_alert_cfg = detection_config.get("live_alert", {})
+        self.live_alert_confidence = float(live_alert_cfg.get("confidence", 0.5))
+        self.live_alert_min_box_fraction = float(live_alert_cfg.get("min_box_fraction", 0.01))
+        self.live_alert_persistence_seconds = float(live_alert_cfg.get("persistence_seconds", 1.0))
+        self.live_alert_min_iou = float(live_alert_cfg.get("min_iou", 0.3))
         self._model: Any | None = None
         self._lock = threading.Lock()
         self._warm_lock = threading.Lock()

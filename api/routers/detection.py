@@ -5,7 +5,7 @@ from io import BytesIO
 from typing import Any
 
 import numpy as np
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from medfire_watch.browser_camera import BrowserCameraMonitor
 from medfire_watch.config import PROJECT_ROOT
@@ -44,23 +44,35 @@ def camera_app_module() -> FileResponse:
 
 def _decode_camera_upload(image: UploadFile) -> np.ndarray:
     import cv2
+    from PIL import Image, UnidentifiedImageError
 
-    payload = image.file.read()
+    payload = image.file.read(MAX_UPLOAD_BYTES + 1)
+    if len(payload) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Camera frame exceeds the 10 MiB upload limit.")
+    try:
+        with Image.open(BytesIO(payload)) as decoded_image:
+            if decoded_image.format not in {"JPEG", "PNG"}:
+                raise HTTPException(status_code=400, detail="Camera frame is not a readable JPEG or PNG image.")
+            if decoded_image.width * decoded_image.height > MAX_IMAGE_PIXELS:
+                raise HTTPException(status_code=413, detail="Camera frame exceeds the 25-megapixel limit.")
+    except UnidentifiedImageError as exc:
+        raise HTTPException(status_code=400, detail="Camera frame is not a readable JPEG or PNG image.") from exc
     decoded = cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_COLOR)
     if decoded is None or decoded.size == 0:
-        raise HTTPException(400, "Camera frame is not a readable JPEG or PNG image.")
-    if decoded.shape[0] * decoded.shape[1] > 25_000_000:
-        raise HTTPException(413, "Camera frame exceeds the 25-megapixel limit.")
+        raise HTTPException(status_code=400, detail="Camera frame is not a readable JPEG or PNG image.")
+
+
     return decoded
 
 
 @router.post("/live-camera/detect")
 def detect_camera_frame(
     image: UploadFile = File(...),
+    session_id: str = Header("default", alias="x-camera-session"),
     service: Any = Depends(lambda: get_detection_service()),
 ) -> dict[str, Any]:
     """Detect a reduced browser frame; the native video element is never throttled."""
-    return _browser_camera_monitor.process(_decode_camera_upload(image), service)
+    return _browser_camera_monitor.process(_decode_camera_upload(image), service, session_id=session_id)
 
 
 @router.post("/live-camera/alert/{alert_id}")
@@ -114,13 +126,18 @@ async def detect(
             rgb_image = np.asarray(decoded_image.convert("RGB"))
     except UnidentifiedImageError as exc:
         raise HTTPException(status_code=400, detail="Uploaded file is not a readable image.") from exc
-    import cv2
+    from starlette.concurrency import run_in_threadpool
 
-    decoded = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
-    result = service.predict(decoded)
-    annotated = draw_detections(decoded, result["detections"])
-    success, encoded = cv2.imencode(".png", annotated)
-    if not success:
-        raise RuntimeError("Could not encode the annotated image.")
-    result["annotated_image_base64"] = base64.b64encode(encoded.tobytes()).decode("ascii")
-    return result
+    def _process_inference() -> dict[str, Any]:
+        import cv2
+
+        decoded = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
+        result = service.predict(decoded)
+        annotated = draw_detections(decoded, result["detections"])
+        success, encoded = cv2.imencode(".png", annotated)
+        if not success:
+            raise RuntimeError("Could not encode the annotated image.")
+        result["annotated_image_base64"] = base64.b64encode(encoded.tobytes()).decode("ascii")
+        return result
+
+    return await run_in_threadpool(_process_inference)

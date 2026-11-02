@@ -2,6 +2,9 @@
 
 - Satellite heat observations can be delayed, obscured by cloud or caused by industrial heat.
   They do not confirm wildfire incidents or perimeters; missing markers do not establish safety.
+- VIIRS "low" confidence hotspots are intentionally filtered out by default (`medfire_watch/world_hotspots.py`)
+  to minimize false positives from sun glint, industrial flaring, and sensor noise. To include low-confidence
+  observations on the satellite map, set the environment variable `MEDFIRE_INCLUDE_LOW_CONFIDENCE=1`.
 - Fire-weather danger describes conditions, not calibrated ignition probability.
   Forecast resolution follows the provider grid; zoom and Open-Meteo model estimates
   do not refine the Copernicus class. The EOX 2025 mosaic is dated imagery.

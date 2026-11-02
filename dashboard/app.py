@@ -56,8 +56,12 @@ st.markdown(
 
 
 def api_request(method: str, path: str, **kwargs):
+    headers = dict(kwargs.pop("headers", None) or {})
+    token = os.environ.get("MEDFIRE_API_TOKEN")
+    if token:
+        headers["X-MedFire-Token"] = token
     try:
-        response = requests.request(method, f"{API_BASE_URL}{path}", timeout=(4, 90), **kwargs)
+        response = requests.request(method, f"{API_BASE_URL}{path}", headers=headers, timeout=(4, 90), **kwargs)
     except requests.RequestException as exc:
         st.error(f"The MedFire API could not be reached ({type(exc).__name__}).")
         return None
@@ -93,31 +97,75 @@ with pages[1]:
         "Automatic snapshots require confidence ≥50%, at least 1% frame area, and one second of overlapping detection."
     )
 
+@st.cache_data(ttl=300)
+def _load_snapshot(photo_name: str) -> bytes | None:
+    req_headers = {}
+    if token := os.environ.get("MEDFIRE_API_TOKEN"):
+        req_headers["X-MedFire-Token"] = token
+    try:
+        response = requests.get(f"{API_BASE_URL}/alerts/snapshots/{photo_name}", headers=req_headers, timeout=10)
+        if response.ok:
+            return response.content
+    except requests.RequestException:
+        pass
+    return None
+
+
 with pages[2]:
     heading_column, delete_column = st.columns([4, 1], vertical_alignment="center")
     with heading_column:
         st.subheader("Camera snapshots")
     with delete_column:
-        if st.button(
-            "Delete all",
-            key="delete_camera_history",
-            disabled=SHOWCASE_ALERT,
-            help="Clear local history and saved snapshots; Telegram messages remain.",
-        ):
-            cleared = api_request("DELETE", "/alerts/history")
-            if cleared is not None:
-                if cleared.get("remaining_snapshots"):
-                    st.warning("History cleared. Some snapshots are busy; click Delete all again to remove them.")
-                else:
-                    st.success("Local snapshot history cleared.")
+        if "confirm_delete_all" not in st.session_state:
+            st.session_state.confirm_delete_all = False
+
+        if not st.session_state.confirm_delete_all:
+            if st.button(
+                "Delete all",
+                key="delete_camera_history",
+                disabled=SHOWCASE_ALERT,
+                help="Clear local history and saved snapshots; Telegram messages remain.",
+            ):
+                st.session_state.confirm_delete_all = True
+                st.rerun()
+        else:
+            st.warning("Delete all snapshots?")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Confirm", key="delete_confirm_yes", type="primary"):
+                    cleared = api_request("DELETE", "/alerts/history")
+                    _load_snapshot.clear()
+                    st.session_state.confirm_delete_all = False
+                    if cleared is not None:
+                        if cleared.get("remaining_snapshots"):
+                            st.warning(
+                                "History cleared. Some snapshots are busy; click Delete all again to remove them."
+                            )
+                        else:
+                            st.success("Local snapshot history cleared.")
+                    st.rerun()
+            with col2:
+                if st.button("Cancel", key="delete_confirm_no"):
+                    st.session_state.confirm_delete_all = False
+                    st.rerun()
     st.write("Track the snapshots sent by the live camera, including delivery failures.")
     status = api_request("GET", "/alerts")
-    if status and not status.get("configured") and not SHOWCASE_ALERT:
-        st.info("Open your Telegram bot, press Start, then connect your chat here.")
-        if st.button("Connect Telegram chat"):
-            connected = api_request("POST", "/telegram/detect")
-            if connected:
-                st.success("Telegram chat connected.")
+    if status and not SHOWCASE_ALERT:
+        if not status.get("configured"):
+            st.info("Open your Telegram bot, press Start, then connect your chat here.")
+            if st.button("Connect Telegram chat"):
+                connected = api_request("POST", "/telegram/detect")
+                if connected:
+                    st.success("Telegram chat connected.")
+                    st.rerun()
+        else:
+            with st.expander("Telegram connection", expanded=False):
+                st.caption("Telegram bot and chat are connected.")
+                if st.button("Re-detect Telegram chat"):
+                    connected = api_request("POST", "/telegram/detect")
+                    if connected:
+                        st.success("Telegram chat reconnected.")
+                        st.rerun()
 
     @st.fragment(run_every=3)
     def camera_history():
@@ -141,9 +189,9 @@ with pages[2]:
             with st.container(border=True):
                 st.write(("Delivered" if item.get("confirmed") else "Failed") + " · " + item.get("sent_at_utc", ""))
                 if item.get("photo_name"):
-                    response = requests.get(f"{API_BASE_URL}/alerts/snapshots/{item['photo_name']}", timeout=10)
-                    if response.ok:
-                        st.image(response.content, width=480)
+                    photo_bytes = _load_snapshot(item["photo_name"])
+                    if photo_bytes:
+                        st.image(photo_bytes, width=480)
                 if item.get("confirmed"):
                     st.caption(f"Telegram message {item.get('message_id')}")
                 else:

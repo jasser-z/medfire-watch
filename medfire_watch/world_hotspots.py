@@ -11,6 +11,11 @@ import requests
 
 from medfire_watch.config import PROJECT_ROOT, get_setting
 
+
+def should_filter_low_confidence() -> bool:
+    return get_setting("MEDFIRE_INCLUDE_LOW_CONFIDENCE") != "1"
+
+
 WORLD_PATH = PROJECT_ROOT / "data" / "satellite" / "world_hotspots.json"
 _LOCK = threading.Lock()
 
@@ -47,8 +52,9 @@ def refresh_world_hotspots(path: Path = WORLD_PATH) -> dict:
     frame = frame.dropna(subset=["latitude", "longitude"])
     # Keep individual FIRMS observations. MapLibre clusters these only at low zoom;
     # storing one-degree aggregates here would make a displayed 24-hour point false.
-    confidence = frame.get("confidence", pd.Series("unknown", index=frame.index)).astype(str).str.lower()
-    frame = frame.loc[~confidence.isin(["low", "l"])].copy()
+    if should_filter_low_confidence():
+        confidence = frame.get("confidence", pd.Series("unknown", index=frame.index)).astype(str).str.lower()
+        frame = frame.loc[~confidence.isin(["low", "l"])].copy()
     frame["observation_utc"] = frame["observation_utc"].dt.strftime("%Y-%m-%dT%H:%M:%SZ")
     detections = [
         {
@@ -94,12 +100,25 @@ def refresh_if_old() -> bool | None:
         _LOCK.release()
 
 
+_WORLD_CACHE: tuple[float, str, dict] | None = None
+_WORLD_CACHE_LOCK = threading.Lock()
+
+
 def load_world_hotspots(path: Path = WORLD_PATH) -> dict:
-    """Filter legacy cached VIIRS low-confidence shorthand as well as new data."""
-    saved = json.loads(path.read_text(encoding="utf-8"))
-    if "detections" in saved:
-        saved["detections"] = [
-            d for d in saved["detections"] if str(d.get("confidence", "")).lower() not in {"l", "low"}
-        ]
-        saved["observations"] = len(saved["detections"])
-    return saved
+    """Filter legacy cached VIIRS low-confidence shorthand as well as new data, cached by file mtime."""
+    global _WORLD_CACHE
+    if not path.is_file():
+        return {"observations": 0, "detections": []}
+    mtime = path.stat().st_mtime
+    low_conf = get_setting("MEDFIRE_INCLUDE_LOW_CONFIDENCE", "0")
+    with _WORLD_CACHE_LOCK:
+        if _WORLD_CACHE is not None and _WORLD_CACHE[0] == mtime and _WORLD_CACHE[1] == low_conf:
+            return json.loads(json.dumps(_WORLD_CACHE[2]))
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        if should_filter_low_confidence() and "detections" in saved:
+            saved["detections"] = [
+                d for d in saved["detections"] if str(d.get("confidence", "")).lower() not in {"l", "low"}
+            ]
+            saved["observations"] = len(saved["detections"])
+        _WORLD_CACHE = (mtime, low_conf, saved)
+        return json.loads(json.dumps(saved))
