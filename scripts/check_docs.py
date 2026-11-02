@@ -11,14 +11,22 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main() -> None:
     """Validate local targets in the READMEs, notices and product documentation."""
-    files = [*ROOT.glob("README*.md"), ROOT / "THIRD_PARTY_NOTICES.md", *ROOT.glob("docs/**/*.md")]
+    files = [
+        *ROOT.glob("README*.md"),
+        ROOT / "THIRD_PARTY_NOTICES.md",
+        ROOT / "CONTRIBUTING.md",
+        ROOT / "CHANGELOG.md",
+        *ROOT.glob("docs/**/*.md"),
+    ]
     failures = []
     checked = 0
     images = 0
     for source in files:
         text = source.read_text(encoding="utf-8")
-        for match in re.finditer(r"(!?)\[[^\]]*\]\(([^)]+)\)", text):
-            target = match.group(2).split(' "', 1)[0].strip("<>")
+        targets = [(match.group(1), match.group(2)) for match in re.finditer(r"(!?)\[[^\]]*\]\(([^)]+)\)", text)]
+        targets.extend(("", match.group(1)) for match in re.finditer(r"^\[[^\]]+\]:\s*(\S+)", text, re.MULTILINE))
+        for image_marker, raw_target in targets:
+            target = raw_target.split(' "', 1)[0].strip("<>")
             parsed = urlsplit(target)
             if parsed.scheme or parsed.netloc or not parsed.path:
                 continue
@@ -26,7 +34,7 @@ def main() -> None:
             checked += 1
             if not path.is_file():
                 failures.append(f"{source.relative_to(ROOT)}: missing {target}")
-            elif match.group(1):
+            elif image_marker:
                 from PIL import Image
 
                 with Image.open(path) as image:

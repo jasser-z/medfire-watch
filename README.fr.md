@@ -149,6 +149,7 @@ python scripts/check_docs.py
 
 Définissez `MEDFIRE_SKIP_WARMUP=1` pour exécuter les tests sans charger les poids du modèle en mémoire.
 Consultez le [Guide de Contribution](CONTRIBUTING.md) et le [Journal des Modifications](CHANGELOG.md).
+L'[audit du projet](docs/AUDIT.md) présente les vérifications et les points restants sur les dépendances et le déploiement.
 
 ## Technologies et structure
 

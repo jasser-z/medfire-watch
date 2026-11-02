@@ -149,6 +149,7 @@ python scripts/check_docs.py
 
 Set `MEDFIRE_SKIP_WARMUP=1` to run tests without loading model weights into memory.
 See [Contributing Guide](CONTRIBUTING.md) for code style guidelines and [Changelog](CHANGELOG.md) for version history.
+The [project audit](docs/AUDIT.md) records verification results and outstanding dependency/deployment findings.
 
 ## Stack and layout
 
