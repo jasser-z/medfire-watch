@@ -33,6 +33,7 @@ def test_detection_service_fake_model() -> None:
     mock_result.names = {0: "fire", 1: "smoke"}
     mock_result.boxes = mock_boxes
     mock_result.speed = {"inference": 5.2}
+
     def mock_predict(*args, **kwargs):
         source = kwargs.get("source", args[0] if args else None)
         count = len(source) if isinstance(source, list) else 1
@@ -235,7 +236,7 @@ def test_secrets_handling(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
 
     # Env file with quotes and comments
     env_file = tmp_path / ".env"
-    env_file.write_text("FIRMS_MAP_KEY=\"my_secret_key\"\n", encoding="utf-8")
+    env_file.write_text('FIRMS_MAP_KEY="my_secret_key"\n', encoding="utf-8")
     assert secrets.read_firms_key(env_file) == "my_secret_key"
 
     # Mask secret

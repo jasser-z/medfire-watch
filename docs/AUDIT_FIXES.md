@@ -1,5 +1,8 @@
 # Audit Fixes & Quality Report
 
+These are historical implementation notes; test counts and working-tree statements describe an earlier snapshot.
+See the [current audit](AUDIT.md) for verified results and remaining limitations.
+
 This document records the complete implementation and verification of the audit fixes across all phases, adhering to the strict ground rules of the local repository.
 
 ---

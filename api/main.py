@@ -36,8 +36,6 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         await run_in_threadpool(refresh_worker.join, 1)
 
 
-
-
 try:
     API_VERSION = version("medfire-watch")
 except PackageNotFoundError:

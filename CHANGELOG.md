@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Live camera cooldown controls: persist a 0–1440 minute interval and reset the current wait without deleting history.
+- Responsive Alerts toolbar with Telegram detection beside Delete all, configuration status and delivery totals.
 - API guard middleware in `api/main.py` enforcing host allow-lists (`127.0.0.1`, `localhost`, `[::1]`, and `MEDFIRE_ALLOWED_HOSTS`) and cross-origin request validation for non-idempotent endpoints.
 - Optional token authentication via `X-MedFire-Token` header when `MEDFIRE_API_TOKEN` is configured.
 - Automated retention sweep in `medfire_watch/retention.py` pruning expired video results and fire-weather tile caches according to `MEDFIRE_VIDEO_TTL_HOURS`.
@@ -32,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Increased launcher API readiness check timeout to 120 seconds in `scripts/run_app.py`.
 
 ### Fixed
+- Require optional API authentication on all mutation methods, including cooldown PUT requests.
+- Send a unique camera session header from each browser page to isolate persistence tracking.
+- Isolate alert-manager test settings from local runtime overrides.
 - Fixed Telegram chat auto-discovery (`detect_chat`) to reject ambiguous responses when multiple private chat IDs exist, requiring manual specification.
 - Fixed live camera upload handling to validate byte length against `MAX_UPLOAD_BYTES` and inspect image dimensions with PIL prior to full OpenCV decoding.
 - Added support for `MEDFIRE_INCLUDE_LOW_CONFIDENCE` to control VIIRS low-confidence hotspot filtering.

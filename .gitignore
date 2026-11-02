@@ -86,3 +86,6 @@ Thumbs.db
 npm-debug.log*
 playwright-report/
 test-results/
+output/playwright/
+*.p12
+*.pfx

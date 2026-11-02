@@ -108,7 +108,7 @@ The launcher writes diagnostic logs under `logs/`.
 
 ## 6. Connect Telegram and verify the complete flow
 
-1. In the dashboard, open **Alerts** and select **Connect Telegram chat**.
+1. In the dashboard, open **Alerts** and select **Detect Telegram chat** beside **Delete all**.
 2. The API reads the bot's recent updates and saves the discovered recipient to
    `TELEGRAM_CHAT_ID` in `.env`. It should report that the chat is connected.
 3. If no chat is found, send a fresh `/start` to your bot and try again.
@@ -147,7 +147,7 @@ python scripts/run_app.py --stop
 | NASA key missing/invalid | Verify the FIRMS key, `.env` filename and root location; save and restart. |
 | No fresh satellite data | Check key status, network/provider availability and `logs/`; do not treat missing data as safety. |
 | Bot not configured | Check token and chat ID; restart after manual edits. |
-| No Telegram chat found | Send `/start` to your own bot, then retry Connect Telegram chat. |
+| No Telegram chat found | Send `/start` to your own bot, then retry Detect Telegram chat. |
 | Telegram delivery fails | Check bot credentials, recipient, connectivity and whether the bot is blocked. |
 | Camera unavailable | Allow browser permission and use localhost; check whether another app owns the camera. |
 | Boxes but no photo | Check persistence, confidence, box area, cooldown and delivery history. |
@@ -184,7 +184,8 @@ default applies. Other alert cooldowns are unaffected.
 Allow browser camera permission and press Start camera. Negotiated dimensions and fps
 appear beside the detector update rate. Fullscreen includes video, boxes and status.
 Configure `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` locally. Open the bot, press Start,
-and use Connect Telegram chat if needed. Alerts lists attempts and confirmed delivery.
+and use Detect Telegram chat if needed (Re-detect Telegram chat when already configured).
+Alerts lists attempts and confirmed delivery.
 Delete all includes a confirmation prompt before clearing local history and snapshots;
 existing Telegram messages stay in Telegram.
 

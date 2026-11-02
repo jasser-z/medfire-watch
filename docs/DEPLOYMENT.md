@@ -20,8 +20,16 @@ camera snapshots live under `runs/webcam_alerts`.
 - **Host and Origin Protection**: By default, requests are restricted to loopback interfaces. Configure
   `MEDFIRE_ALLOWED_HOSTS` and `MEDFIRE_ALLOWED_ORIGINS` when hosting behind reverse proxies or external hostnames.
 - **API Token**: Set `MEDFIRE_API_TOKEN` to require `X-MedFire-Token` on write, upload, and deletion endpoints.
+  This includes camera cooldown PUT and reset POST requests. Streamlit's server-side requests attach
+  the token, but the native camera/video iframe clients currently do not. Enabling it blocks their
+  mutations unless a trusted proxy injects the header. Keep the default loopback setup for ordinary
+  local browser use; token checks alone do not provide a complete authenticated deployment.
 - **Concurrent Video Limits**: Concurrent video jobs are throttled by `MEDFIRE_MAX_VIDEO_JOBS` (default 2)
   to preserve server memory and CPU/GPU resources. Extra requests receive HTTP 429.
+
+Camera cooldown overrides are saved in `runs/alerts/camera_settings.json`. Resetting the camera
+wait removes its timer from `runs/alerts/telegram_state.json`, preserving other timers and history.
+These local runtime files are ignored by Git.
 
 ## Windows scheduled refresh
 
