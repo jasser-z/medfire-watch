@@ -8,8 +8,11 @@ from pathlib import Path
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
+from medfire_watch.config import load_env
 
 from dashboard.world_map import render_world_map
+
+load_env()
 
 API_BASE_URL = os.environ.get("MEDFIRE_API_URL", "http://127.0.0.1:8000").rstrip("/")
 PUBLIC_API_URL = os.environ.get("MEDFIRE_PUBLIC_API_URL", API_BASE_URL).rstrip("/")

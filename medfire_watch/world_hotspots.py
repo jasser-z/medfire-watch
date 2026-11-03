@@ -50,6 +50,7 @@ def refresh_world_hotspots(path: Path = WORLD_PATH) -> dict:
     for col in ("latitude", "longitude", "frp"):
         frame[col] = pd.to_numeric(frame[col], errors="coerce")
     frame = frame.dropna(subset=["latitude", "longitude"])
+    frame = frame.loc[frame["latitude"].between(-90, 90) & frame["longitude"].between(-180, 180)].copy()
     # Keep individual FIRMS observations. MapLibre clusters these only at low zoom;
     # storing one-degree aggregates here would make a displayed 24-hour point false.
     if should_filter_low_confidence():
@@ -100,7 +101,7 @@ def refresh_if_old() -> bool | None:
         _LOCK.release()
 
 
-_WORLD_CACHE: tuple[float, str, dict] | None = None
+_WORLD_CACHE: tuple[tuple[str, int], str, dict] | None = None
 _WORLD_CACHE_LOCK = threading.Lock()
 
 
@@ -109,10 +110,10 @@ def load_world_hotspots(path: Path = WORLD_PATH) -> dict:
     global _WORLD_CACHE
     if not path.is_file():
         return {"observations": 0, "detections": []}
-    mtime = path.stat().st_mtime
+    cache_key = (str(path.resolve()), path.stat().st_mtime_ns)
     low_conf = get_setting("MEDFIRE_INCLUDE_LOW_CONFIDENCE", "0")
     with _WORLD_CACHE_LOCK:
-        if _WORLD_CACHE is not None and _WORLD_CACHE[0] == mtime and _WORLD_CACHE[1] == low_conf:
+        if _WORLD_CACHE is not None and _WORLD_CACHE[0] == cache_key and _WORLD_CACHE[1] == low_conf:
             return json.loads(json.dumps(_WORLD_CACHE[2]))
         saved = json.loads(path.read_text(encoding="utf-8"))
         if should_filter_low_confidence() and "detections" in saved:
@@ -120,5 +121,5 @@ def load_world_hotspots(path: Path = WORLD_PATH) -> dict:
                 d for d in saved["detections"] if str(d.get("confidence", "")).lower() not in {"l", "low"}
             ]
             saved["observations"] = len(saved["detections"])
-        _WORLD_CACHE = (mtime, low_conf, saved)
+        _WORLD_CACHE = (cache_key, low_conf, saved)
         return json.loads(json.dumps(saved))

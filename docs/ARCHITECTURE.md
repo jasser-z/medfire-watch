@@ -36,18 +36,25 @@ NVDEC/CUDA scaling and NVENC are used when available, with CPU fallbacks.
 Live camera sends 960-pixel detector copies separately from native video rendering.
 Photo alerts use elapsed-time persistence and overlapping boxes. The queued photo comes
 from the same full-resolution source frame. Browser sessions track detection persistence independently using the `X-Camera-Session`
-identifier, bounded by a 256 MB memory queue and a 5-minute idle session eviction. Dedicated camera alert
+identifier (maximum 64 trackers by default), with a 256 MiB photo queue and 5-minute idle eviction.
+Camera inference has two admission slots; duplicate in-flight session requests return 429. Dedicated camera alert
 cooldowns (default 5 minutes) prevent duplicate Telegram notifications.
 
 ## Security and resource management
 
 - **API guard middleware**: Validates incoming `Host` headers (`127.0.0.1`, `localhost`, `[::1]`,
   and `MEDFIRE_ALLOWED_HOSTS`), blocks untrusted cross-origin mutating requests (`MEDFIRE_ALLOWED_ORIGINS`),
-  and requires `X-MedFire-Token` when `MEDFIRE_API_TOKEN` is set.
+  and requires a header token or signed HttpOnly browser session on sensitive reads and all writes
+  when `MEDFIRE_API_TOKEN` is set. Native clients use the session login without a secret in JavaScript.
+  Streamlit is privileged and needs an authenticated external gateway when exposed remotely.
 - **Resource cleanup**: A background retention sweep runs every 10 minutes, pruning completed video
-  artifacts and weather cache files older than `MEDFIRE_VIDEO_TTL_HOURS` (default 24h).
+  artifacts by terminal completion time using `MEDFIRE_VIDEO_TTL_HOURS` (default 24h).
+  Active jobs and download leases are protected under the same lock used for lifecycle transitions.
+  Weather cache files use an independent 24-hour retention policy.
 - **Concurrency control**: Asynchronous video jobs are capped at `MEDFIRE_MAX_VIDEO_JOBS` (default 2),
-  rejecting surplus processing requests with HTTP 429.
+  reserving capacity atomically before upload/preparation and rejecting excess requests with HTTP 429.
+  Retained jobs are bounded separately (default 64). Cooperative cancellation releases capacity after cleanup.
+  State is process-local: use one API worker; restart artifacts expire by newest group mtime.
 - **Provider concurrency**: Fire-weather metadata employs double-checked locking, keeping network
   fetches outside global critical sections, while nearest town lookups use precomputed vectorized radian arrays.
 

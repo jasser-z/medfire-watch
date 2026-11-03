@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+from collections import deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -13,8 +14,18 @@ import yaml
 from medfire_watch.config import PROJECT_ROOT, get_setting
 
 
+class TelegramDeliveryError(RuntimeError):
+    """Safe delivery error with explicit retry policy; never includes a request URL."""
+
+    def __init__(self, message: str, *, retryable: bool = True) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+
+
 class AlertManager:
     _history_lock = threading.RLock()
+    _inflight: set[tuple[str, str]] = set()
+    _camera_generations: dict[str, int] = {}
 
     def __init__(
         self,
@@ -59,6 +70,8 @@ class AlertManager:
         with self._history_lock:
             state = self._read_state()
             state.pop("live_camera", None)
+            key = str(self.state_path.resolve())
+            self._camera_generations[key] = self._camera_generations.get(key, 0) + 1
             self.state_path.parent.mkdir(parents=True, exist_ok=True)
             temporary = self.state_path.with_suffix(".tmp")
             temporary.write_text(json.dumps(state, indent=2), encoding="utf-8")
@@ -198,18 +211,32 @@ class AlertManager:
         token = get_setting("TELEGRAM_BOT_TOKEN")
         chat_id = get_setting("TELEGRAM_CHAT_ID")
         if not token or not chat_id:
-            raise RuntimeError("Set TELEGRAM_BOT_TOKEN and detect a private Telegram chat first.")
+            raise TelegramDeliveryError(
+                "Set TELEGRAM_BOT_TOKEN and detect a private Telegram chat first.", retryable=False
+            )
+        key = (str(self.state_path.resolve()), dedupe_key)
         with self._history_lock:
-            generation = self._history_generation()
+            if key in self._inflight:
+                return {"sent": False, "reason": "in_flight"}
             state = self._read_state()
             now = datetime.now(timezone.utc)
-        previous = state.get(dedupe_key)
-        if previous:
-            sent_at = datetime.fromisoformat(previous)
-            cooldown = self.camera_cooldown() if kind == "live_camera" else self.cooldown_minutes
-            if now - sent_at < timedelta(minutes=cooldown):
-                return {"sent": False, "reason": "cooldown"}
+            previous = state.get(dedupe_key)
+            if previous:
+                sent_at = datetime.fromisoformat(previous)
+                cooldown = self.camera_cooldown() if kind == "live_camera" else self.cooldown_minutes
+                if now - sent_at < timedelta(minutes=cooldown):
+                    return {"sent": False, "reason": "cooldown"}
+            generation = self._history_generation()
+            camera_generation = self._camera_generations.get(key[0], 0)
+            self._inflight.add(key)
+        try:
+            return self._deliver(message, kind, dedupe_key, photo, token, chat_id, now, generation, camera_generation)
+        finally:
+            with self._history_lock:
+                self._inflight.discard(key)
 
+    def _deliver(self, message, kind, dedupe_key, photo, token, chat_id, now, generation, camera_generation):
+        """Perform network I/O outside the lock; a reset invalidates the timer update."""
         base_url = f"https://api.telegram.org/bot{token}"
         try:
             if photo is not None:
@@ -231,18 +258,18 @@ class AlertManager:
             response.raise_for_status()
             result = response.json()
         except requests.HTTPError as exc:
-            detail = None
-            if hasattr(exc, "response") and exc.response is not None:
-                try:
-                    detail = exc.response.json().get("description")
-                except Exception:
-                    detail = None
-            msg = f": {detail}" if detail else ""
-            raise RuntimeError(f"Telegram did not confirm delivery{msg}.") from exc
+            status = exc.response.status_code if exc.response is not None else None
+            raise TelegramDeliveryError(
+                "Telegram rejected delivery; check credentials, chat access and rate limits.",
+                retryable=status in {408, 429, 500, 502, 503, 504},
+            ) from None
         except (OSError, requests.RequestException, ValueError):
-            raise RuntimeError("Telegram did not confirm delivery; no message was recorded as sent.") from None
+            raise TelegramDeliveryError("Telegram did not confirm delivery; no message was recorded as sent.") from None
         if not result.get("ok"):
-            raise RuntimeError("Telegram did not confirm delivery; no message was recorded as sent.")
+            raise TelegramDeliveryError(
+                "Telegram did not confirm delivery; no message was recorded as sent.",
+                retryable=result.get("error_code") in {408, 429, 500, 502, 503, 504},
+            )
 
         log_entry = {
             "sent_at_utc": now.isoformat(),
@@ -254,26 +281,31 @@ class AlertManager:
         }
         with self._history_lock:
             state = self._read_state()
-            state[dedupe_key] = now.isoformat()
+            current_generation = self._camera_generations.get(str(self.state_path.resolve()), 0)
+            if kind != "live_camera" or camera_generation == current_generation:
+                state[dedupe_key] = datetime.now(timezone.utc).isoformat()
             self.state_path.parent.mkdir(parents=True, exist_ok=True)
-            self.state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+            temporary = self.state_path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(state, indent=2), encoding="utf-8")
+            temporary.replace(self.state_path)
             if generation == self._history_generation():
                 with self.log_path.open("a", encoding="utf-8") as handle:
                     handle.write(json.dumps(log_entry, separators=(",", ":")) + "\n")
         return {"sent": True, **log_entry}
 
-    def sent_log(self, limit: int = 100) -> list[dict[str, Any]]:
+    def sent_log(self, limit: int = 100, kind: str | None = None) -> list[dict[str, Any]]:
         """List confirmed sends from the attempt log."""
         with self._history_lock:
             if not self.log_path.exists():
                 return []
-            entries = []
-            for line in self.log_path.read_text(encoding="utf-8").splitlines():
-                if line.strip():
-                    item = json.loads(line)
-                    if item.get("confirmed") is True:
-                        entries.append(item)
-            return entries[-limit:][::-1]
+            entries: deque = deque(maxlen=max(0, limit))
+            with self.log_path.open(encoding="utf-8") as handle:
+                for line in handle:
+                    if line.strip():
+                        item = json.loads(line)
+                        if item.get("confirmed") is True and (kind is None or item.get("kind") == kind):
+                            entries.append(item)
+            return list(reversed(entries))
 
     def record_failure(self, kind: str, attempt: int, reason: str, photo_name: str | None = None) -> None:
         """Persist a safe, fixed reason; never write the exception or request URL."""
@@ -299,10 +331,14 @@ class AlertManager:
     def attempt_log(self, limit: int = 100, kind: str | None = None) -> list[dict[str, Any]]:
         """Load recent delivery attempts, optionally filtered by channel."""
         with self._history_lock:
-            entries = self.sent_log(100000 if kind else limit)
+            entries = self.sent_log(limit, kind=kind)
             if self.failure_log_path.exists():
+                failures: deque = deque(maxlen=max(0, limit))
                 with self.failure_log_path.open(encoding="utf-8") as handle:
-                    entries.extend(json.loads(line) for line in handle if line.strip())
-            if kind:
-                entries = [item for item in entries if item.get("kind") == kind]
+                    for line in handle:
+                        if line.strip():
+                            item = json.loads(line)
+                            if kind is None or item.get("kind") == kind:
+                                failures.append(item)
+                entries.extend(failures)
             return sorted(entries, key=lambda item: item["sent_at_utc"], reverse=True)[:limit]

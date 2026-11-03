@@ -9,6 +9,9 @@ uvicorn>=0.30.0
 streamlit>=1.38.0
 python-multipart>=0.0.9
 ultralytics>=8.3.0,<9
+# Tested together on CPU; select the matching official wheel index for CUDA.
+torch==2.14.1
+torchvision==0.29.2
 psutil>=6.0.0
 imageio-ffmpeg>=0.5.1
 pillow>=10

@@ -1,6 +1,10 @@
-# Project audit — 2 November 2026
+# Earlier project audit — 2 November 2026
 
-This audit covers the current repository, setup documentation, Git exclusions, API guards,
+The current implementation and verification are in the [engineering hardening report](HARDENING_REPORT.md).
+The findings and counts below describe the earlier snapshot; browser authentication, sensitive reads,
+video admission and retention have since been corrected. The legacy CUDA environment still requires migration.
+
+This earlier audit covers the current repository, setup documentation, Git exclusions, API guards,
 camera cooldown controls, test suite, dependency advisories and reachable local Git history.
 It is a source and automated-check review, not a penetration test or a new model evaluation.
 

@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import os
-import secrets
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from importlib.metadata import PackageNotFoundError, version
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, Response
-from medfire_watch.config import load_env
+from fastapi.responses import JSONResponse, RedirectResponse, Response
+from medfire_watch.config import env_number, load_env
 
+from api import auth
 from api.routers import alerts, detection, map, video
 from api.services import get_detection_service
 
@@ -22,6 +22,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     """Warm inference and manage the satellite refresh worker."""
     from starlette.concurrency import run_in_threadpool
 
+    env_number("MEDFIRE_VIDEO_TTL_HOURS", 24, 0, 8760)
+    env_number("MEDFIRE_MAX_VIDEO_JOBS", 2, 1, 16, integer=True)
+    env_number("MEDFIRE_MAX_CAMERA_SESSIONS", 64, 1, 1024, integer=True)
+    env_number("MEDFIRE_MAX_STORED_VIDEO_JOBS", 64, 1, 4096, integer=True)
+    env_number("MEDFIRE_VIDEO_UPLOAD_TIMEOUT_SECONDS", 300, 1, 3600)
     if os.getenv("MEDFIRE_SKIP_WARMUP") != "1":
         await run_in_threadpool(get_detection_service().warmup)
     stop_refresh = threading.Event()
@@ -133,16 +138,45 @@ async def api_guard_middleware(request: Request, call_next: Callable[[Request], 
             if clean_origin not in allowed_origins:
                 return JSONResponse(status_code=403, content={"detail": "Cross-origin request forbidden."})
 
+    public_read = False
     api_token = os.getenv("MEDFIRE_API_TOKEN", "").strip()
     if api_token:
-        requires_token = request.method not in {"GET", "HEAD", "OPTIONS"}
+        path = request.url.path
+        public_read = path in {
+            "/health",
+            "/auth/login",
+            "/world-map",
+            "/world-map/data",
+            "/world-map/nearest-town",
+            "/world-map/style.mjs",
+            "/world-map/logic.mjs",
+            "/world-map/app.mjs",
+            "/world-map/countries/labels",
+            "/world-map/countries/boundaries",
+            "/fire-weather/metadata",
+            "/fire-weather/place",
+            "/fire-weather/module.mjs",
+        } or path.startswith("/fire-weather/tiles/")
+        requires_token = path != "/auth/session" and not (request.method in {"GET", "HEAD", "OPTIONS"} and public_read)
         if requires_token:
-            token_header = request.headers.get("x-medfire-token")
-            if not token_header or not secrets.compare_digest(token_header.encode(), api_token.encode()):
+            by_header = auth.valid_token(request.headers.get("x-medfire-token", ""), api_token)
+            by_cookie = auth.valid_session(request.cookies.get(auth.COOKIE_NAME, ""), api_token)
+            if not by_header and not by_cookie:
+                if request.method == "GET" and path in {"/live-camera", "/video-test"}:
+                    return RedirectResponse(f"/auth/login?next={path}", status_code=303)
                 return JSONResponse(status_code=401, content={"detail": "Invalid or missing X-MedFire-Token."})
+            if by_cookie and not by_header and request.method not in {"GET", "HEAD", "OPTIONS"}:
+                # Browser writes always send Origin. No cookie-authenticated blind CSRF requests.
+                if not request.headers.get("origin"):
+                    return JSONResponse(status_code=403, content={"detail": "Session writes require an Origin header."})
 
-    return await call_next(request)
+    response = await call_next(request)
+    if api_token and not public_read:
+        response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
 
 
-for router in (map.router, detection.router, video.router, alerts.router):
+for router in (auth.router, map.router, detection.router, video.router, alerts.router):
     app.include_router(router)

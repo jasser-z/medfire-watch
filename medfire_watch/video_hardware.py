@@ -73,11 +73,23 @@ class VideoReader:
         if not self.capture.isOpened():
             self.capture.release()
             raise ValueError("Could not open the video.")
-        self.width = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
-        self.height = int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        raw_fps = self.capture.get(cv2.CAP_PROP_FPS)
-        self.fps = float(raw_fps) if np.isfinite(raw_fps) and raw_fps > 0 else 25.0
-        self.frame_count = int(self.capture.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.process: subprocess.Popen | None = None
+        try:
+            width = self.capture.get(cv2.CAP_PROP_FRAME_WIDTH)
+            height = self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            count = self.capture.get(cv2.CAP_PROP_FRAME_COUNT)
+            raw_fps = self.capture.get(cv2.CAP_PROP_FPS)
+            if not all(np.isfinite(v) for v in (width, height, count)):
+                raise ValueError("Video metadata is not finite.")
+            if width < 1 or height < 1 or width * height > 8_294_400 or count < 0:
+                raise ValueError("Video dimensions are invalid or exceed 4K.")
+            self.width, self.height, self.frame_count = int(width), int(height), int(count)
+            self.fps = float(raw_fps) if np.isfinite(raw_fps) and raw_fps > 0 else 25.0
+            if self.fps > 240:
+                raise ValueError("Video frame rate exceeds 240 fps.")
+        except BaseException:
+            self.capture.release()
+            raise
         if start_seconds:
             self.capture.set(cv2.CAP_PROP_POS_MSEC, start_seconds * 1000)
         self.source_width, self.source_height = self.width, self.height
@@ -106,6 +118,8 @@ class VideoReader:
                     "-hwaccel_output_format",
                     "cuda",
                     *(["-ss", str(start_seconds)] if start_seconds else []),
+                    "-protocol_whitelist",
+                    "file,pipe",
                     "-i",
                     str(path),
                     "-map",
@@ -143,6 +157,8 @@ class VideoReader:
                     "-loglevel",
                     "error",
                     *(["-ss", str(start_seconds)] if start_seconds else []),
+                    "-protocol_whitelist",
+                    "file,pipe",
                     "-i",
                     str(path),
                     "-map",
@@ -163,7 +179,11 @@ class VideoReader:
                 stderr=subprocess.DEVNULL,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
-            self.first_frame = self._read_gpu()
+            try:
+                self.first_frame = self._read_gpu()
+            except BaseException:
+                self.close()
+                raise
             if self.first_frame is None:
                 self.close()
                 raise ValueError("Could not decode small inference frames.")

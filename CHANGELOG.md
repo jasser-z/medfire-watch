@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Engineering hardening — 2026-11-02
+
+- Reserve video admission before upload/preparation; protect active jobs and downloads during retention.
+- Protect sensitive reads and add expiring HttpOnly browser sessions for native media clients.
+- Bound camera sessions, queue byte reservations and retained video jobs; add cancellation and deadlines.
+- Coordinate Telegram sends/reset, rearm camera persistence, redact HTTP errors and classify retries.
+- Validate media/settings, preserve image orientation, reject invalid boxes and correct satellite cache keys.
+- Pin a patched CPU model dependency pair; add constrained installs and CI advisory/syntax checks.
+- See [engineering verification and remaining limits](docs/HARDENING_REPORT.md).
+
 ## [Unreleased]
 
 ### Added

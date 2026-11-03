@@ -95,7 +95,7 @@ def metadata(timezone_name: str = "UTC") -> dict:
         cached = _read_cached_metadata(path)
         if cached is not None:
             return _today_metadata(cached, timezone_name)
-        return metadata(timezone_name)
+        raise RuntimeError("Fire-weather metadata refresh failed or timed out; retry later.")
 
     try:
         response = requests.get(

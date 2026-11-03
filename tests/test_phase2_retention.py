@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+from datetime import datetime, timezone
 import io
 import os
 import time
@@ -196,7 +196,7 @@ def test_tile_write_is_atomic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
     monkeypatch.setattr(fire_weather.requests, "get", lambda *a, **k: MockResponse())
 
-    date = "2026-11-01"
+    date = datetime.now(timezone.utc).date().isoformat()
     # Call tile(date, z, x, y)
     result = fire_weather.tile(date, 7, 64, 48)
     assert result == png_bytes

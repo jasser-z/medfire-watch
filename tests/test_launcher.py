@@ -81,3 +81,23 @@ def test_rotate_log_file(tmp_path: Path) -> None:
     log_file.write_text("x" * 200, encoding="utf-8")
     launcher.rotate_log_file(log_file, max_bytes=100)
     assert (tmp_path / "test.log.1").is_file()
+
+
+def test_launcher_loads_env_before_building_both_service_environments(tmp_path, monkeypatch):
+    import os
+    (tmp_path / ".env").write_text("MEDFIRE_API_TOKEN=isolated-launcher-token\n", encoding="utf-8-sig")
+    monkeypatch.setattr(launcher, "ROOT", tmp_path)
+    # Track the key even when it was initially absent: dotenv itself writes os.environ.
+    monkeypatch.setenv("MEDFIRE_API_TOKEN", "before-test")
+    monkeypatch.delenv("MEDFIRE_API_TOKEN", raising=False)
+    monkeypatch.setattr(launcher, "parse_args", lambda: Namespace(fast_dev=True))
+    observed = []
+    monkeypatch.setattr(launcher, "validate_launch", lambda args: observed.append(os.getenv("MEDFIRE_API_TOKEN")))
+    launcher.main()
+    assert observed == ["isolated-launcher-token"]
+
+
+def test_launcher_rejects_remote_bind_without_token(monkeypatch):
+    monkeypatch.setenv("MEDFIRE_API_TOKEN", "")
+    with pytest.raises(ValueError, match="Remote binding requires"):
+        launcher.validate_launch(arguments(host="0.0.0.0"))

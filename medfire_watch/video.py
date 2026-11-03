@@ -4,6 +4,7 @@ import logging
 import os
 import queue
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -249,22 +250,29 @@ def _fetch_frame_batch(
     frame_queue: queue.Queue[np.ndarray | None],
     batch_size: int,
     reader_is_alive: Callable[[], bool],
+    cancelled: threading.Event | None = None,
 ) -> tuple[list[np.ndarray], bool]:
     """Retrieve a batch of frames from the frame queue."""
     frames: list[np.ndarray] = []
     reached_end = False
+    deadline = time.monotonic() + 30
     while len(frames) < batch_size:
+        if cancelled is not None and cancelled.is_set():
+            raise RuntimeError("Video job cancelled.")
         try:
             item = frame_queue.get(timeout=1)
         except queue.Empty:
             if not reader_is_alive():
                 reached_end = True
                 break
+            if time.monotonic() > deadline:
+                raise RuntimeError("Video decoder stalled for 30 seconds.") from None
             continue
         if item is None:
             reached_end = True
             break
         frames.append(item)
+        deadline = time.monotonic() + 30
     return frames, reached_end
 
 
@@ -277,6 +285,7 @@ def iter_video_detections(
     infer_batch: Callable[[list[np.ndarray]], list[dict[str, Any]]] | None = None,
     batch_size: int = 8,
     initial_results: list[dict[str, Any]] | None = None,
+    cancelled: threading.Event | None = None,
 ) -> Iterator[dict[str, Any]]:
     """Yield export progress and final frame-preserving video results."""
     if batch_size < 1:
@@ -292,10 +301,15 @@ def iter_video_detections(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     import imageio_ffmpeg
 
-    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     raw_output_path = output_path.with_name(f"{output_path.stem}.video-only.mp4")
-    encoder_name, codec_arguments = encoder_arguments(width, height)
-    encoder = start_raw_encoder(ffmpeg, width, height, fps, codec_arguments, raw_output_path)
+    try:
+        ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+        encoder_name, codec_arguments = encoder_arguments(width, height)
+        encoder = start_raw_encoder(ffmpeg, width, height, fps, codec_arguments, raw_output_path)
+    except BaseException:
+        capture.close()
+        raw_output_path.unlink(missing_ok=True)
+        raise
 
     alert_tracker = ConsecutiveDetectionAlert(consecutive_frames)
     frame_index = 0
@@ -314,10 +328,13 @@ def iter_video_detections(
     detector_device = "unknown"
     detector_precision = "unknown"
     first_detection_seconds: float | None = None
+    processing_complete = False
 
     try:
         while True:
-            frames, reached_end = _fetch_frame_batch(frame_queue, batch_size, reader.is_alive)
+            if cancelled is not None and cancelled.is_set():
+                raise RuntimeError("Video job cancelled.")
+            frames, reached_end = _fetch_frame_batch(frame_queue, batch_size, reader.is_alive, cancelled)
             if not frames and reached_end:
                 break
             cached = (initial_results or [])[frame_index : frame_index + len(frames)]
@@ -334,6 +351,8 @@ def iter_video_detections(
             if len(results) != len(frames):
                 raise RuntimeError("The batched detector returned a different number of results than input frames.")
             for frame, result in zip(frames, results):
+                if frame_index >= max(1, int(fps * max_duration_seconds)):
+                    raise ValueError("Decoded video exceeds the configured duration limit.")
                 timestamp_seconds = frame_index / fps
                 detections = result["detections"]
                 detected = any(item["class"] in {"fire", "smoke"} for item in detections)
@@ -344,13 +363,18 @@ def iter_video_detections(
                     alert_events.append(alert)
                 if first_detection_seconds is None:
                     first_detection_seconds = time.perf_counter() - elapsed_start
+                encode_deadline = time.monotonic() + 30
                 while True:
+                    if cancelled is not None and cancelled.is_set():
+                        raise RuntimeError("Video job cancelled.")
                     if writer.errors:
                         raise RuntimeError("Video encoder worker failed.") from writer.errors[0]
                     try:
                         encode_queue.put((frame, detections, frame_index), timeout=0.2)
                         break
                     except queue.Full:
+                        if time.monotonic() > encode_deadline:
+                            raise RuntimeError("Video encoder stalled for 30 seconds.") from None
                         continue
                 if frame_index % max(1, round(fps * 2)) == 0:
                     yield {
@@ -365,16 +389,33 @@ def iter_video_detections(
                 break
         if reader.errors:
             raise RuntimeError("Video frame reader failed.") from reader.errors[0]
+        processing_complete = True
     except Exception:
         LOGGER.exception("Video detection failed while processing %s.", input_path.name)
         raise
     finally:
+        primary_error = sys.exception()
         stop_reader.set()
         reader.join(timeout=3)
         capture.close()
-        close_and_finalize_encoder(encoder, writer, encode_queue)
+        try:
+            close_and_finalize_encoder(encoder, writer, encode_queue)
+        except BaseException as exc:
+            raw_output_path.unlink(missing_ok=True)
+            if primary_error is None:
+                raise
+            LOGGER.warning("Video encoder cleanup failed (%s); preserving the processing error.", type(exc).__name__)
+        finally:
+            if encoder.poll() is None:
+                encoder.kill()
+                encoder.wait(timeout=5)
+            if not processing_complete or frame_index == 0:
+                raw_output_path.unlink(missing_ok=True)
 
+    if frame_index == 0:
+        raise ValueError("Video contains no decodable frames.")
     if writer.frames_encoded != frame_index or reader.frames_decoded != frame_index:
+        raw_output_path.unlink(missing_ok=True)
         raise RuntimeError(
             f"Frame counts differ: decoded={reader.frames_decoded}, inferred={frame_index}, "
             f"encoded={writer.frames_encoded}."

@@ -32,6 +32,7 @@ def test_detection_service_fake_model() -> None:
     mock_boxes.conf.cpu().tolist.return_value = [0.92]
 
     mock_result = MagicMock()
+    mock_result.orig_shape = (100, 100)
     mock_result.names = {0: "fire", 1: "smoke"}
     mock_result.boxes = mock_boxes
     mock_result.speed = {"inference": 5.2}

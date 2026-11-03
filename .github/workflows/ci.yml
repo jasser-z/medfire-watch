@@ -5,6 +5,9 @@ on:
     branches: [main, master]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   build-test:
     runs-on: ubuntu-latest
@@ -19,10 +22,14 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          python -m pip install --upgrade pip -c constraints-py311.txt
+          pip install -r requirements-dev.txt -c constraints-py311.txt
       - name: Ruff
         run: ruff check .
+      - name: Python compilation and installed dependency consistency
+        run: |
+          python -m compileall -q api alerts medfire_watch dashboard scripts
+          python -m pip check
       - name: Pytest
         run: pytest -q --maxfail=1 --cov=api --cov=alerts --cov=medfire_watch --cov-report=term-missing --cov-report=xml
       - name: Install browser test dependencies
@@ -33,6 +40,12 @@ jobs:
           npm run test:coverage | tee runs/coverage/javascript.txt
       - name: Browser asset formatting
         run: npm run format:check
+      - name: Browser module syntax
+        run: node scripts/check_ui_syntax.mjs
+      - name: Dependency advisories
+        run: |
+          npm audit --audit-level=moderate
+          python scripts/audit_dependencies.py
       - name: Documentation links and images
         run: python scripts/check_docs.py
       - uses: actions/upload-artifact@v4

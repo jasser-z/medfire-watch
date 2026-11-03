@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import threading
 from functools import lru_cache
 from pathlib import Path
@@ -9,7 +10,7 @@ from typing import Any
 import numpy as np
 import yaml
 from alerts.manager import AlertManager
-from medfire_watch.config import PROJECT_ROOT
+from medfire_watch.config import PROJECT_ROOT, bounded_number
 
 DETECTION_WEIGHTS_PATH = PROJECT_ROOT / "models" / "detection" / "weights" / "best.pt"
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -31,6 +32,8 @@ VIDEO_SOURCE_PATHS: dict[str, Path] = {}
 VIDEO_FRAME_DETECTIONS: dict[str, list[dict[str, Any]]] = {}
 VIDEO_PREPARED_INPUTS: dict[str, dict[str, Any]] = {}
 VIDEO_SEEK_REQUESTS: dict[str, float] = {}
+VIDEO_JOB_CANCEL_EVENTS: dict[str, threading.Event] = {}
+VIDEO_DOWNLOAD_LEASES: dict[str, int] = {}
 logger = logging.getLogger(__name__)
 
 
@@ -39,20 +42,48 @@ class DetectionService:
         if not DETECTION_WEIGHTS_PATH.is_file():
             raise FileNotFoundError(f"Detection weights are missing: {DETECTION_WEIGHTS_PATH}")
         detection_config = yaml.safe_load(DETECTION_CONFIG_PATH.read_text(encoding="utf-8"))
-        self.confidence_threshold = float(detection_config["confidence_threshold"])
+        self.confidence_threshold = bounded_number(
+            "confidence_threshold", detection_config["confidence_threshold"], 0, 1
+        )
         if not 0 < self.confidence_threshold < 1:
             raise ValueError("Detector confidence threshold must be between zero and one.")
-        self.consecutive_alert_frames = int(detection_config.get("temporal_alert", {}).get("consecutive_frames", 5))
+        self.consecutive_alert_frames = bounded_number(
+            "temporal_alert.consecutive_frames",
+            detection_config.get("temporal_alert", {}).get("consecutive_frames", 5),
+            1,
+            10000,
+            integer=True,
+        )
         video_cfg = detection_config.get("video", {})
-        self.max_video_upload_bytes = int(video_cfg.get("maximum_upload_mb", DEFAULT_VIDEO_UPLOAD_MB)) * 1024 * 1024
-        self.max_video_duration_seconds = float(
-            video_cfg.get("maximum_duration_seconds", DEFAULT_VIDEO_DURATION_SECONDS)
+        self.max_video_upload_bytes = (
+            bounded_number(
+                "video.maximum_upload_mb",
+                video_cfg.get("maximum_upload_mb", DEFAULT_VIDEO_UPLOAD_MB),
+                1,
+                10240,
+                integer=True,
+            )
+            * 1024
+            * 1024
+        )
+        self.max_video_duration_seconds = bounded_number(
+            "video.maximum_duration_seconds",
+            video_cfg.get("maximum_duration_seconds", DEFAULT_VIDEO_DURATION_SECONDS),
+            0.1,
+            3600,
         )
         live_alert_cfg = detection_config.get("live_alert", {})
-        self.live_alert_confidence = float(live_alert_cfg.get("confidence", 0.5))
-        self.live_alert_min_box_fraction = float(live_alert_cfg.get("min_box_fraction", 0.01))
-        self.live_alert_persistence_seconds = float(live_alert_cfg.get("persistence_seconds", 1.0))
-        self.live_alert_min_iou = float(live_alert_cfg.get("min_iou", 0.3))
+        for name, default, minimum, maximum in (
+            ("confidence", 0.5, 0, 1),
+            ("min_box_fraction", 0.01, 0, 1),
+            ("persistence_seconds", 1.0, 0.01, 300),
+            ("min_iou", 0.3, 0, 1),
+        ):
+            setattr(
+                self,
+                f"live_alert_{name}",
+                bounded_number(f"live_alert.{name}", live_alert_cfg.get(name, default), minimum, maximum),
+            )
         self._model: Any | None = None
         self._lock = threading.Lock()
         self._warm_lock = threading.Lock()
@@ -84,9 +115,24 @@ class DetectionService:
                 boxes.cls.cpu().tolist(),
                 boxes.conf.cpu().tolist(),
             ):
+                if (
+                    len(xyxy) != 4
+                    or not all(math.isfinite(v) for v in [*xyxy, class_id, confidence])
+                    or not 0 <= confidence <= 1
+                    or class_id != int(class_id)
+                ):
+                    continue
+                name = result.names.get(int(class_id))
+                if name not in {"fire", "smoke"}:
+                    continue
+                shape = getattr(result, "orig_shape", None)
+                if shape:
+                    xyxy = [max(0, min(value, shape[1 if i % 2 == 0 else 0])) for i, value in enumerate(xyxy)]
+                if xyxy[2] <= xyxy[0] or xyxy[3] <= xyxy[1]:
+                    continue
                 detections.append(
                     {
-                        "class": result.names[int(class_id)],
+                        "class": name,
                         "confidence": float(confidence),
                         "xyxy": [float(value) for value in xyxy],
                     }

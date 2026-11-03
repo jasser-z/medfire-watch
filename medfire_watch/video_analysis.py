@@ -18,8 +18,12 @@ def analyse_video(
     batch_size: int = 8,
     initial_results: list | None = None,
     priority: Callable | None = None,
+    cancelled: threading.Event | None = None,
+    max_duration_seconds: float = 600,
 ) -> dict:
     """Publish batch predictions with seek priority and full backfill."""
+    if batch_size < 1:
+        raise ValueError("Video inference batch size must be at least one.")
     reader = VideoReader(path, inference_width=640)
     results: dict[int, dict] = {}
     started = time.perf_counter()
@@ -38,6 +42,8 @@ def analyse_video(
             if hasattr(detector, "predict_batch")
             else [detector.predict(f) for f in images]
         )
+        if len(batch) != len(pending):
+            raise RuntimeError("Detector result count does not match the video batch.")
         for (index, _), result in zip(pending, batch):
             for item in result["detections"]:
                 x1, y1, x2, y2 = item["xyxy"]
@@ -58,6 +64,8 @@ def analyse_video(
                         break
                     images.append((index, frame))
                     index += 1
+                    if index > max(1, int(fps * max_duration_seconds)):
+                        raise ValueError("Decoded video exceeds the configured duration limit.")
                 while not stopped.is_set():
                     try:
                         decoded.put(images, timeout=0.1)
@@ -84,7 +92,10 @@ def analyse_video(
             publish(result["detections"], index, fps)
         worker = threading.Thread(target=decode, name="video-analysis-decode", daemon=True)
         worker.start()
+        decode_deadline = time.monotonic() + 30
         while True:
+            if cancelled is not None and cancelled.is_set():
+                raise RuntimeError("Video job cancelled.")
             target = priority() if priority else None
             if target is not None:
                 first = max(0, round(target * fps))
@@ -103,13 +114,25 @@ def analyse_video(
                                 break
                     finally:
                         seeker.close()
-            images = decoded.get()
+            try:
+                images = decoded.get(timeout=0.5)
+            except queue.Empty:
+                if not worker.is_alive():
+                    raise RuntimeError("Video decoder terminated without an end marker.") from None
+                if time.monotonic() > decode_deadline:
+                    raise RuntimeError("Video decoder stalled for 30 seconds.") from None
+                continue
+            decode_deadline = time.monotonic() + 30
             if isinstance(images, Exception):
                 raise images
             if not images:
                 break
             infer(images, reader)
         elapsed = time.perf_counter() - started
+        if not results:
+            raise ValueError("Video contains no decodable frames.")
+        if sorted(results) != list(range(len(results))):
+            raise RuntimeError("Video analysis contains missing frame results.")
         return {
             "results": [results[i] for i in sorted(results)],
             "analysis_fps": len(results) / max(elapsed, 1e-6),

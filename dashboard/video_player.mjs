@@ -85,7 +85,10 @@ if (jobId) {
         body: file,
         signal: preparationAbort.signal,
       });
-      if (!response.ok) throw Error();
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        throw Error(detail.detail || 'Video upload failed');
+      }
       const input = await response.json();
       if (sequence !== selectionSequence) return;
       preparedInput = input;
@@ -112,7 +115,7 @@ if (jobId) {
       if (sequence === selectionSequence) {
         check.textContent = 'Predict live ↗';
         document.getElementById('status').textContent =
-          'Video preparation failed. Check the file type, 1 GB / 10-minute limits, and choose it again.';
+          'Video preparation failed: ' + (e.message || 'Check the file and choose it again.');
       }
     }
   }
@@ -305,11 +308,7 @@ function draw(mediaTime = v.currentTime) {
     } else hi = m - 1;
   }
   if (best >= 0 && mediaTime - frames[best].time < 0.3)
-    for (let d of frames[best].detections.length
-      ? frames[best].detections
-      : best > 0
-        ? frames[best - 1].detections
-        : []) {
+    for (let d of frames[best].detections) {
       let [x, y, x2, y2] = d.xyxy;
       if (clickedAt && firstOverlayMs === null) firstOverlayMs = performance.now() - clickedAt;
       let color = d.class === 'fire' ? '#ff4238' : '#ffb02e';
@@ -329,3 +328,9 @@ function draw(mediaTime = v.currentTime) {
   else requestAnimationFrame(() => draw(v.currentTime));
 }
 draw();
+
+window.addEventListener('pagehide', () => {
+  preparationAbort?.abort();
+  v.pause();
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+});

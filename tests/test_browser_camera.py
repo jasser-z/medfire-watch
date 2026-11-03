@@ -40,6 +40,7 @@ def test_full_resolution_photo_scales_pending_detector_coordinates_without_mutat
     monitor = BrowserCameraMonitor()
     detection = {"class": "fire", "confidence": 0.9, "xyxy": [300, 150, 600, 450]}
     monitor._pending["event"] = {
+        "expires": float("inf"),
         "detections": [detection],
         "alert": {"detection": detection},
         "image_width": 960,
