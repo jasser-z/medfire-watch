@@ -15,7 +15,7 @@ import numpy as np
 import yaml
 from alerts.manager import AlertManager
 
-from medfire_watch.config import PROJECT_ROOT
+from medfire_watch.config import PROJECT_ROOT, env_number
 from medfire_watch.coordinates import scale_detections
 from medfire_watch.drawing import draw_detections
 from medfire_watch.live_alert import PersistentDetectionAlert
@@ -45,6 +45,10 @@ def _load_live_alert_defaults() -> dict[str, float]:
     }
 
 
+class CameraCapacityError(RuntimeError):
+    """Camera session or inference admission is full."""
+
+
 class BrowserCameraMonitor:
     """Accept small detector frames without ever pacing the browser video element."""
 
@@ -68,6 +72,9 @@ class BrowserCameraMonitor:
         self.min_iou = min_iou if min_iou is not None else defaults["min_iou"]
 
         self._trackers: dict[str, tuple[PersistentDetectionAlert, float]] = {}
+        self._generation = 0
+        self._inference_slots = threading.BoundedSemaphore(2)
+        self._inflight_sessions: set[str] = set()
         self.started = time.monotonic()
         self._lock = threading.Lock()
         self._pending: dict[str, dict[str, Any]] = {}
@@ -88,6 +95,8 @@ class BrowserCameraMonitor:
             trk, _ = self._trackers[session_id]
             self._trackers[session_id] = (trk, now)
             return trk
+        if len(self._trackers) >= env_number("MEDFIRE_MAX_CAMERA_SESSIONS", 64, 1, 1024, integer=True):
+            raise CameraCapacityError("Camera session capacity reached; retry after idle sessions expire.")
         trk = PersistentDetectionAlert(seconds=self.persistence_seconds, min_iou=self.min_iou)
         self._trackers[session_id] = (trk, now)
         return trk
@@ -109,7 +118,17 @@ class BrowserCameraMonitor:
             else image
         )
         started = time.monotonic()
-        result = detector.predict(reduced)
+        with self._lock:
+            self._get_tracker(session_id, started)
+            if session_id in self._inflight_sessions or not self._inference_slots.acquire(blocking=False):
+                raise CameraCapacityError("Camera inference is busy; retry shortly.")
+            self._inflight_sessions.add(session_id)
+        try:
+            result = detector.predict(reduced)
+        finally:
+            with self._lock:
+                self._inflight_sessions.discard(session_id)
+                self._inference_slots.release()
         detections = scale_detections(result["detections"], (reduced.shape[1], reduced.shape[0]), (width, height))
 
         conf = getattr(detector, "live_alert_confidence", self.alert_confidence)
@@ -136,7 +155,7 @@ class BrowserCameraMonitor:
                 alert_id = uuid.uuid4().hex
                 self._pending[alert_id] = {
                     "detections": detections,
-                    "alert": alert,
+                    "alert": {**alert, "generation": self._generation},
                     "expires": now + 8,
                     "image_width": width,
                     "image_height": height,
@@ -163,7 +182,8 @@ class BrowserCameraMonitor:
         """Queue the matching source frame for a pending alert, respecting the byte budget."""
         with self._lock:
             item = self._pending.get(alert_id)
-            if item is None:
+            if item is None or item["expires"] < time.monotonic():
+                self._pending.pop(alert_id, None)
                 return False
             frame_bytes = image.nbytes
             if self._queued_bytes + frame_bytes > MAX_QUEUE_BYTES:
@@ -174,6 +194,7 @@ class BrowserCameraMonitor:
                 )
                 return False
             del self._pending[alert_id]
+            self._queued_bytes += frame_bytes
 
         source_size = (item["image_width"], item["image_height"])
         target_size = (image.shape[1], image.shape[0])
@@ -183,9 +204,9 @@ class BrowserCameraMonitor:
 
         try:
             self._queue.put_nowait((image.copy(), detections, alert))
-            with self._lock:
-                self._queued_bytes += frame_bytes
         except queue.Full:
+            with self._lock:
+                self._queued_bytes -= frame_bytes
             self.last_error = "Camera alert queue is full."
             self.failure_count += 1
             AlertManager.from_config(PROJECT_ROOT / "configs" / "alerts.yaml").record_failure(
@@ -194,9 +215,30 @@ class BrowserCameraMonitor:
             return False
         return True
 
+    def reset_persistence(self) -> None:
+        """Rearm persistent detections and invalidate snapshots queued before reset."""
+        with self._lock:
+            self._generation += 1
+            self._trackers.clear()
+            self._pending.clear()
+
     def status(self) -> dict[str, Any]:
         """Return the current configuration and delivery status."""
         return {"delivered": self.delivery_count, "failed": self.failure_count, "last_error": self.last_error}
+
+    def clear_snapshots(self, manager: AlertManager) -> dict[str, int]:
+        """Discard queued photos and clear saved history without rearming live tracks."""
+        with self._lock:
+            self._generation += 1
+            self._pending.clear()
+            while True:
+                try:
+                    image, _, _ = self._queue.get_nowait()
+                except queue.Empty:
+                    break
+                self._queued_bytes = max(0, self._queued_bytes - image.nbytes)
+                self._queue.task_done()
+            return manager.clear_history(PROJECT_ROOT / "runs" / "webcam_alerts")
 
     def _send(self) -> None:
         while True:
@@ -204,11 +246,14 @@ class BrowserCameraMonitor:
             with self._lock:
                 self._queued_bytes = max(0, self._queued_bytes - image.nbytes)
             try:
-                folder = PROJECT_ROOT / "runs" / "webcam_alerts"
-                folder.mkdir(parents=True, exist_ok=True)
-                photo = folder / f"alert_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
-                if not cv2.imwrite(str(photo), draw_detections(image, detections)):
-                    raise OSError("Snapshot encode failed")
+                with self._lock:
+                    if alert.get("generation", self._generation) != self._generation:
+                        continue
+                    folder = PROJECT_ROOT / "runs" / "webcam_alerts"
+                    folder.mkdir(parents=True, exist_ok=True)
+                    photo = folder / f"alert_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+                    if not cv2.imwrite(str(photo), draw_detections(image, detections)):
+                        raise OSError("Snapshot encode failed")
                 detection = alert["detection"]
                 caption = (
                     f"Live camera · {datetime.now().astimezone().isoformat(timespec='seconds')} · "
@@ -217,6 +262,8 @@ class BrowserCameraMonitor:
                 manager = AlertManager.from_config(PROJECT_ROOT / "configs" / "alerts.yaml")
                 dedupe = "live_camera"
                 for attempt in range(1, 4):
+                    if alert.get("generation", self._generation) != self._generation:
+                        break
                     try:
                         sent = manager.send(caption, kind="live_camera", dedupe_key=dedupe, photo=photo)
                         if sent.get("sent"):
@@ -231,8 +278,9 @@ class BrowserCameraMonitor:
                         manager.record_failure(
                             "live_camera", attempt, "Delivery failed; check configuration and network", photo.name
                         )
-                        if attempt == 3:
+                        if attempt == 3 or not getattr(exc, "retryable", True):
                             self.failure_count += 1
+                            break
                         else:
                             time.sleep(2 ** (attempt - 1))
             except Exception as exc:

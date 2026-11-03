@@ -42,3 +42,11 @@ time-to-alert are unmeasured. See [video evidence](VIDEO_BENCHMARK.md) and
 The map presents NASA observations, Copernicus/GWIS forecasts and Open-Meteo context.
 It has no locally trained ignition model. Provider data is separate from detector training.
 Dataset and model licensing is documented in [notices](../THIRD_PARTY_NOTICES.md).
+
+## Runtime integrity
+
+The engineering hardening validates finite model outputs, drops invalid/inverted boxes and clips
+coordinates to the original image bounds. Images respect EXIF orientation. Inference remains serialized
+on the shared model. The supplied weights and recorded evaluation metrics were not modified or retrained.
+The patched CPU dependency pair is pinned in the requirements; CUDA migration is separately required.
+Only load trusted checkpoints. Software regression tests do not constitute a new detector evaluation.

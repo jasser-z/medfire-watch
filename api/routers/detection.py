@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
-from medfire_watch.browser_camera import BrowserCameraMonitor
+from medfire_watch.browser_camera import BrowserCameraMonitor, CameraCapacityError
 from medfire_watch.config import PROJECT_ROOT
 from medfire_watch.drawing import draw_detections
 from pydantic import BaseModel, Field
@@ -56,7 +56,9 @@ def _decode_camera_upload(image: UploadFile) -> np.ndarray:
                 raise HTTPException(status_code=400, detail="Camera frame is not a readable JPEG or PNG image.")
             if decoded_image.width * decoded_image.height > MAX_IMAGE_PIXELS:
                 raise HTTPException(status_code=413, detail="Camera frame exceeds the 25-megapixel limit.")
-    except UnidentifiedImageError as exc:
+    except Image.DecompressionBombError:
+        raise HTTPException(413, "Camera frame exceeds the pixel limit.") from None
+    except (UnidentifiedImageError, OSError, SyntaxError) as exc:
         raise HTTPException(status_code=400, detail="Camera frame is not a readable JPEG or PNG image.") from exc
     decoded = cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_COLOR)
     if decoded is None or decoded.size == 0:
@@ -68,11 +70,14 @@ def _decode_camera_upload(image: UploadFile) -> np.ndarray:
 @router.post("/live-camera/detect")
 def detect_camera_frame(
     image: UploadFile = File(...),
-    session_id: str = Header("default", alias="x-camera-session"),
+    session_id: str = Header("default", alias="x-camera-session", min_length=1, max_length=128, pattern=r"^[\w-]+$"),
     service: Any = Depends(lambda: get_detection_service()),
 ) -> dict[str, Any]:
     """Detect a reduced browser frame; the native video element is never throttled."""
-    return _browser_camera_monitor.process(_decode_camera_upload(image), service, session_id=session_id)
+    try:
+        return _browser_camera_monitor.process(_decode_camera_upload(image), service, session_id=session_id)
+    except CameraCapacityError as exc:
+        raise HTTPException(429, str(exc)) from None
 
 
 @router.post("/live-camera/alert/{alert_id}")
@@ -114,6 +119,7 @@ def reset_camera_cooldown() -> dict[str, bool]:
     """Clear only the camera timer so the next qualifying alert can be sent."""
     try:
         get_alert_manager().reset_camera_cooldown()
+        _browser_camera_monitor.reset_persistence()
     except (OSError, RuntimeError):
         raise HTTPException(503, "The camera cooldown could not be reset.") from None
     if _browser_camera_monitor.last_error == "Camera alert was suppressed by cooldown.":
@@ -145,7 +151,7 @@ async def detect(
     await image.close()
     if len(payload) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="Image exceeds the 10 MiB upload limit.")
-    from PIL import Image, UnidentifiedImageError
+    from PIL import Image, ImageOps, UnidentifiedImageError
 
     try:
         with Image.open(BytesIO(payload)) as decoded_image:
@@ -154,8 +160,10 @@ async def detect(
             if decoded_image.width * decoded_image.height > MAX_IMAGE_PIXELS:
                 raise HTTPException(status_code=413, detail="Image exceeds the 25-megapixel limit.")
             decoded_image.load()
-            rgb_image = np.asarray(decoded_image.convert("RGB"))
-    except UnidentifiedImageError as exc:
+            rgb_image = np.asarray(ImageOps.exif_transpose(decoded_image).convert("RGB"))
+    except Image.DecompressionBombError:
+        raise HTTPException(413, "Image exceeds the pixel limit.") from None
+    except (UnidentifiedImageError, OSError, SyntaxError) as exc:
         raise HTTPException(status_code=400, detail="Uploaded file is not a readable image.") from exc
     from starlette.concurrency import run_in_threadpool
 

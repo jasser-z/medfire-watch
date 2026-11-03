@@ -18,6 +18,7 @@ MedFire Watch: wildfire and smoke detection with YOLOv8, NASA satellite hotspots
 - Detect fire and smoke from a browser camera and queue annotated Telegram photos after persistent detections.
 - Inspect images and play original videos with aligned boxes, a detection timeline and seek prioritisation.
 - Review photo delivery attempts and download full-resolution annotated video exports.
+- Pause/resume or cancel video prediction; clear generated data from **Storage & cleanup**.
 - Manage Telegram detection beside Delete all in Alerts; edit or reset the camera cooldown from Live camera.
 
 ## Quick start
@@ -32,7 +33,7 @@ Windows PowerShell:
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install -r requirements.txt -c constraints-py311.txt
 python scripts/run_app.py
 ```
 
@@ -42,7 +43,7 @@ Linux/macOS:
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install -r requirements.txt -c constraints-py311.txt
 python scripts/run_app.py
 ```
 
@@ -52,7 +53,12 @@ Follow the [setup guide](docs/GUIDE.md) to detect your private chat. Open
 
 Under **Live camera**, save a cooldown of 0–1440 minutes (0 disables the wait), or select
 **Reset current wait** to allow the next qualifying alert. The interval persists across restarts;
-resetting keeps history and does not send a photo by itself.
+resetting rearms detection persistence, invalidates queued old snapshots and keeps history.
+An already transmitted Telegram request cannot be recalled.
+
+When `MEDFIRE_API_TOKEN` is set, native camera/video pages ask you to sign in once for an
+eight-hour HttpOnly session. Use the same hostname for both services. Read
+[deployment boundaries](docs/DEPLOYMENT.md) before remote use: Streamlit requires its own access gateway.
 
 ### Configuration
 
@@ -61,11 +67,14 @@ resetting keeps history and does not send a photo by itself.
 | `FIRMS_MAP_KEY` | None | NASA FIRMS MAP_KEY for 24-hour satellite heat observations |
 | `TELEGRAM_BOT_TOKEN` | None | Telegram bot token from BotFather |
 | `TELEGRAM_CHAT_ID` | None | Telegram recipient chat ID for alert delivery |
-| `MEDFIRE_API_TOKEN` | None | Optional API token requiring `X-MedFire-Token` on mutation endpoints |
+| `MEDFIRE_API_TOKEN` | None | Protects sensitive reads and all writes; header token or browser session |
 | `MEDFIRE_ALLOWED_HOSTS` | None | Extra allowed `Host` headers beyond localhost and loopback |
 | `MEDFIRE_ALLOWED_ORIGINS` | None | Extra allowed origins for cross-origin mutation requests |
-| `MEDFIRE_VIDEO_TTL_HOURS` | `24` | Hours to retain completed video analysis results and weather cache tiles |
-| `MEDFIRE_MAX_VIDEO_JOBS` | `2` | Maximum concurrent video processing jobs before returning HTTP 429 |
+| `MEDFIRE_VIDEO_TTL_HOURS` | `24` | Hours to retain terminal video jobs (0–8760); weather cache retention is 24h |
+| `MEDFIRE_MAX_VIDEO_JOBS` | `2` | Maximum reserved uploads/preparation/processing jobs (1–16) |
+| `MEDFIRE_MAX_STORED_VIDEO_JOBS` | `64` | Maximum active and retained video jobs (1–4096) |
+| `MEDFIRE_VIDEO_UPLOAD_TIMEOUT_SECONDS` | `300` | Upload body deadline (1–3600 seconds) |
+| `MEDFIRE_MAX_CAMERA_SESSIONS` | `64` | Camera tracker limit (1–1024); idle timeout 5 minutes |
 | `MEDFIRE_INCLUDE_LOW_CONFIDENCE` | `0` | Set to `1` to include low-confidence VIIRS satellite hotspots |
 | `MEDFIRE_SKIP_WARMUP` | `0` | Set to `1` to bypass heavy YOLO inference warmup during launch/tests |
 
@@ -129,14 +138,14 @@ flowchart LR
 
 Headless multi-camera monitoring; held-out false-alarm and time-to-alert evaluation;
 further deployment hardening. Optional API token checks are already implemented; see
-[deployment limitations](docs/DEPLOYMENT.md) before enabling them for browser clients.
+[deployment limitations](docs/DEPLOYMENT.md) for browser login and deployment boundaries.
 
 ## Development
 
-Install development dependencies and verify the test suite:
+Use Node.js 22 for browser development checks. Install development dependencies and verify the test suite:
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -r requirements-dev.txt -c constraints-py311.txt
 npm ci
 
 # Quality gates (all must pass)

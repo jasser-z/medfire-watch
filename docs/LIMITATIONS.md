@@ -16,3 +16,11 @@
   timestamps are not fully supported; speeds are in [benchmarks](VIDEO_BENCHMARK.md).
 - This local research application supports investigation and requires emergency-service
   verification. It provides no worldwide seconds-from-ignition guarantee.
+
+- API coordination is process-local: one worker, one shared operator privilege, no durable job resume.
+  The API session login does not secure Streamlit; remote use requires an authenticated HTTPS gateway.
+  Native codec calls can block outside Python cancellation. Disk quotas and ingress/body limits remain
+  deployment responsibilities. See [deployment](DEPLOYMENT.md).
+- The pinned patched CPU stack has a separate validation environment; migration of the existing vulnerable
+  CUDA stack and target-device browser/GPU acceptance remain outstanding. No new model quality or speed
+  claim follows from the engineering hardening.

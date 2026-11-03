@@ -18,6 +18,7 @@ MedFire Watch : détection des feux de forêt et de la fumée avec YOLOv8, point
 - Détecter le feu et la fumée par caméra et mettre en file des photos Telegram après détections persistantes.
 - Analyser des images et lire les vidéos avec boîtes alignées, chronologie des détections et priorité de recherche.
 - Consulter l'historique d'envoi et télécharger les vidéos annotées à leur résolution source.
+- Suspendre/reprendre ou annuler la prédiction vidéo ; supprimer les données générées via **Storage & cleanup**.
 - Gérer la détection Telegram à côté de Supprimer tout dans Alerts ; modifier ou réinitialiser le délai depuis Live camera.
 
 ## Démarrage rapide
@@ -32,7 +33,7 @@ Windows PowerShell :
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install -r requirements.txt -c constraints-py311.txt
 python scripts/run_app.py
 ```
 
@@ -42,7 +43,7 @@ Linux/macOS :
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install -r requirements.txt -c constraints-py311.txt
 python scripts/run_app.py
 ```
 
@@ -52,7 +53,12 @@ Suivez le [guide de configuration](docs/GUIDE.md) pour détecter votre conversat
 
 Dans **Live camera**, enregistrez un délai de 0 à 1440 minutes (0 désactive l'attente), ou sélectionnez
 **Reset current wait** pour autoriser la prochaine alerte admissible. Le délai reste enregistré après redémarrage ;
-la réinitialisation conserve l'historique et n'envoie pas de photo à elle seule.
+la réinitialisation réarme la persistance, invalide les anciennes photos en attente et conserve l'historique.
+Une requête Telegram déjà transmise ne peut pas être rappelée.
+
+Lorsque `MEDFIRE_API_TOKEN` est défini, les pages caméra/vidéo proposent une connexion
+pour une session HttpOnly de huit heures. Utilisez le même nom d'hôte pour les deux services.
+Consultez les [limites de déploiement](docs/DEPLOYMENT.md) : Streamlit nécessite une passerelle d'accès dédiée.
 
 ### Configuration
 
@@ -61,11 +67,14 @@ la réinitialisation conserve l'historique et n'envoie pas de photo à elle seul
 | `FIRMS_MAP_KEY` | Aucun | Clé NASA FIRMS MAP_KEY pour les observations thermiques satellite sur 24 h |
 | `TELEGRAM_BOT_TOKEN` | Aucun | Jeton de bot Telegram obtenu via BotFather |
 | `TELEGRAM_CHAT_ID` | Aucun | Identifiant de chat Telegram destinataire des alertes |
-| `MEDFIRE_API_TOKEN` | Aucun | Jeton d'API optionnel exigeant l'en-tête `X-MedFire-Token` sur les endpoints d'écriture |
+| `MEDFIRE_API_TOKEN` | Aucun | Protège lectures sensibles et écritures ; jeton par en-tête ou session navigateur |
 | `MEDFIRE_ALLOWED_HOSTS` | Aucun | Hôtes supplémentaires autorisés dans l'en-tête `Host` au-delà de localhost |
 | `MEDFIRE_ALLOWED_ORIGINS` | Aucun | Origines supplémentaires autorisées pour les requêtes de mutation inter-origines |
-| `MEDFIRE_VIDEO_TTL_HOURS` | `24` | Durée de rétention (en heures) des vidéos traitées et des tuiles météo en cache |
-| `MEDFIRE_MAX_VIDEO_JOBS` | `2` | Nombre maximal de traitements vidéo simultanés avant retour HTTP 429 |
+| `MEDFIRE_VIDEO_TTL_HOURS` | `24` | Rétention des tâches vidéo terminées (0–8760 h) ; cache météo conservé 24 h |
+| `MEDFIRE_MAX_VIDEO_JOBS` | `2` | Réservations simultanées : envoi, préparation et traitement (1–16) |
+| `MEDFIRE_MAX_STORED_VIDEO_JOBS` | `64` | Maximum de tâches vidéo actives et conservées (1–4096) |
+| `MEDFIRE_VIDEO_UPLOAD_TIMEOUT_SECONDS` | `300` | Délai maximal de réception vidéo (1–3600 secondes) |
+| `MEDFIRE_MAX_CAMERA_SESSIONS` | `64` | Limite de sessions caméra (1–1024) ; expiration après 5 minutes inactives |
 | `MEDFIRE_INCLUDE_LOW_CONFIDENCE` | `0` | Définir à `1` pour inclure les points chauds satellite VIIRS de faible confiance |
 | `MEDFIRE_SKIP_WARMUP` | `0` | Définir à `1` pour ignorer le préchauffage lourd du modèle au démarrage et en test |
 
@@ -129,14 +138,14 @@ L'[Architecture](docs/ARCHITECTURE.md) détaille la gestion du cache et les méc
 
 Surveillance multi-caméra autonome, évaluation du délai d'alerte et des faux positifs,
 et durcissement supplémentaire du déploiement. Le jeton d'API optionnel est déjà implémenté ; consultez
-les [limites du déploiement](docs/DEPLOYMENT.md) avant de l'activer pour les clients navigateur.
+les [limites du déploiement](docs/DEPLOYMENT.md) pour la connexion navigateur et les limites de sécurité.
 
 ## Développement
 
-Installez les dépendances de développement et exécutez la suite de vérifications :
+Utilisez Node.js 22 pour les contrôles navigateur. Installez les dépendances de développement et exécutez la suite de vérifications :
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -r requirements-dev.txt -c constraints-py311.txt
 npm ci
 
 # Contrôles de qualité (tous doivent réussir)

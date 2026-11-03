@@ -12,12 +12,88 @@ const play = document.getElementById('play'),
   seek = document.getElementById('seek');
 let frames = [],
   done = false;
+const savedJobKey = 'medfire.currentVideoJob';
+let savedJob = null;
+try {
+  const value = JSON.parse(globalThis.sessionStorage?.getItem(savedJobKey) || 'null');
+  if (value && /^[a-f0-9]{32}$/.test(value.id)) savedJob = value;
+} catch {}
+function rememberJob(id, fps) {
+  try {
+    if (id) globalThis.sessionStorage?.setItem(savedJobKey, JSON.stringify({ id, fps }));
+    else globalThis.sessionStorage?.removeItem(savedJobKey);
+  } catch {}
+}
 let jobId = 'JOB' === 'local' ? null : 'JOB',
   preparedInput = null,
   objectUrl = null,
   selectionSequence = 0,
   playSequence = 0,
   preparationAbort = null;
+if (!jobId && savedJob) {
+  jobId = savedJob.id;
+  preparedInput = { input_id: jobId, initial_frames: [], source_fps: savedJob.fps || 30 };
+}
+let predictionPaused = false,
+  predictionTerminal = false,
+  cancellationRequested = false,
+  controlBusy = false;
+const pausePrediction = document.getElementById('prediction-pause'),
+  cancelPrediction = document.getElementById('prediction-cancel');
+function updatePredictionControls() {
+  pausePrediction.disabled = !jobId || predictionTerminal || cancellationRequested || controlBusy;
+  pausePrediction.textContent = predictionPaused ? 'Resume prediction' : 'Pause prediction';
+  cancelPrediction.disabled =
+    predictionTerminal || cancellationRequested || controlBusy || (!jobId && !preparationAbort);
+}
+async function predictionAction(action) {
+  const requestedJob = jobId;
+  if (!requestedJob || controlBusy) return;
+  controlBusy = true;
+  if (action !== 'resume') v.pause();
+  if (action === 'cancel') cancellationRequested = true;
+  updatePredictionControls();
+  try {
+    const response = await fetch('/video-jobs/' + requestedJob + '/' + action, {
+      method: 'POST',
+      signal: AbortSignal.timeout(10000),
+    });
+    const result = await response.json();
+    if (!response.ok) throw Error(result.detail || 'Could not update prediction');
+    if (requestedJob !== jobId) return;
+    if (action === 'cancel') {
+      document.getElementById('prediction-help').textContent =
+        'Cancelling… waiting for the current operation to finish.';
+    } else {
+      predictionPaused = result.paused;
+      document.getElementById('prediction-help').textContent = predictionPaused
+        ? 'Prediction paused. Progress is kept; press Resume prediction to continue.'
+        : 'Prediction resumed.';
+      if (!predictionPaused) v.play().catch(() => {});
+    }
+  } catch (error) {
+    if (requestedJob === jobId) {
+      cancellationRequested = false;
+      document.getElementById('prediction-help').textContent = error.message;
+    }
+  } finally {
+    controlBusy = false;
+    updatePredictionControls();
+  }
+}
+pausePrediction.onclick = () => predictionAction(predictionPaused ? 'resume' : 'pause');
+cancelPrediction.onclick = () => {
+  if (jobId) return predictionAction('cancel');
+  preparationAbort?.abort();
+  preparationAbort = null;
+  selectionSequence++;
+  predictionTerminal = true;
+  frames = [];
+  v.pause();
+  document.getElementById('status').textContent = 'Upload cancelled. Choose a video to start again.';
+  document.getElementById('check').textContent = 'Predict live ↗';
+  updatePredictionControls();
+};
 if (jobId) {
   v.src = '/video-jobs/' + jobId + '/source';
   stage.dataset.playing = 'true';
@@ -49,11 +125,18 @@ if (jobId) {
   document.getElementById('status').textContent = 'Ready · choose a video to begin.';
   async function selectFile(file) {
     if (!file) return;
+    if (jobId && !predictionTerminal) {
+      fetch('/video-jobs/' + jobId + '/cancel', { method: 'POST' }).catch(() => {});
+    }
     const sequence = ++selectionSequence;
     if (preparationAbort) preparationAbort.abort();
     preparationAbort = new AbortController();
     preparedInput = null;
     jobId = null;
+    rememberJob(null);
+    predictionPaused = predictionTerminal = cancellationRequested = false;
+    updatePredictionControls();
+    document.getElementById('prediction-help').textContent = 'Upload can be cancelled while preparing.';
     playSequence++;
     frames = [];
     done = false;
@@ -64,6 +147,8 @@ if (jobId) {
     check.disabled = true;
     document.getElementById('filename').textContent = file.name + ' · ' + (file.size / 1024 / 1024).toFixed(1) + ' MB';
     if (file.size > maximumUploadBytes) {
+      preparationAbort = null;
+      updatePredictionControls();
       document.getElementById('status').textContent = 'File exceeds the configured upload limit.';
       return;
     }
@@ -85,12 +170,19 @@ if (jobId) {
         body: file,
         signal: preparationAbort.signal,
       });
-      if (!response.ok) throw Error();
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        throw Error(detail.detail || 'Video upload failed');
+      }
       const input = await response.json();
       if (sequence !== selectionSequence) return;
       preparedInput = input;
       frames = [...input.initial_frames];
       jobId = input.input_id;
+      rememberJob(jobId, input.source_fps);
+      preparationAbort = null;
+      updatePredictionControls();
+      document.getElementById('prediction-help').textContent = 'Pause keeps progress for Resume. Cancel ends the job.';
       check.disabled = false;
       check.textContent = 'Predict live ↗';
       document.getElementById('status').textContent = 'Ready · press Predict live';
@@ -110,13 +202,19 @@ if (jobId) {
         (input.video_encoder === 'h264_nvenc' ? 'NVENC' : 'CPU encode fallback');
     } catch (e) {
       if (sequence === selectionSequence) {
+        preparationAbort = null;
+        updatePredictionControls();
         check.textContent = 'Predict live ↗';
         document.getElementById('status').textContent =
-          'Video preparation failed. Check the file type, 1 GB / 10-minute limits, and choose it again.';
+          'Video preparation failed: ' + (e.message || 'Check the file and choose it again.');
       }
     }
   }
-  picker.onchange = () => selectFile(picker.files[0]);
+  picker.onchange = () => {
+    const file = picker.files[0];
+    picker.value = '';
+    selectFile(file);
+  };
   upload.ondragover = (e) => {
     e.preventDefault();
     upload.classList.add('dragging');
@@ -128,7 +226,8 @@ if (jobId) {
     selectFile(e.dataTransfer.files[0]);
   };
   document.getElementById('check').onclick = async () => {
-    if (!preparedInput) return;
+    if (!preparedInput || cancellationRequested || (predictionTerminal && !done)) return;
+    if (predictionPaused) return predictionAction('resume');
     const input = preparedInput,
       sequence = selectionSequence;
     playSequence++;
@@ -152,7 +251,8 @@ if (jobId) {
       if (sequence === selectionSequence)
         document.getElementById('status').textContent = 'Could not start prediction. Choose the video again.';
     } finally {
-      if (sequence === selectionSequence) document.getElementById('check').disabled = false;
+      if (sequence === selectionSequence)
+        document.getElementById('check').disabled = cancellationRequested || (predictionTerminal && !done);
     }
   };
 }
@@ -197,7 +297,8 @@ let gatePaused = false,
   gatePauses = 0,
   analysisFinished = false;
 setInterval(() => {
-  if (!jobId || !frames.length || analysisFinished) return;
+  if (!jobId || !frames.length || analysisFinished || predictionPaused || cancellationRequested || predictionTerminal)
+    return;
   const frontier = contiguousFrontier(frames, v.currentTime, preparedInput?.source_fps || 30),
     ahead = frontier - v.currentTime;
   const decision = playbackGate(v.currentTime, frontier, analysisFinished, gatePaused);
@@ -228,6 +329,19 @@ async function poll() {
     requestedPlay = playSequence;
   try {
     let r = await fetch('/video-jobs/' + requestedJob + '/frames?since=' + frames.length);
+    if (r.status === 404 && requestedJob === jobId) {
+      jobId = preparedInput = null;
+      rememberJob(null);
+      frames = [];
+      predictionTerminal = true;
+      v.pause();
+      document.getElementById('download').replaceChildren();
+      document.getElementById('check').disabled = true;
+      document.getElementById('status').textContent = 'Video results were cleared or expired. Choose a video again.';
+      updatePredictionControls();
+      setTimeout(poll, 500);
+      return;
+    }
     if (!r.ok) throw Error();
     let data = await r.json();
     if (requestedJob !== jobId || requestedPlay !== playSequence) {
@@ -248,8 +362,21 @@ async function poll() {
       setTimeout(poll, 50);
       return;
     }
-    analysisFinished = !!s.analysis_complete || s.status === 'complete';
-    if (analysisFinished && gatePaused) {
+    predictionPaused = !!s.paused;
+    predictionTerminal = ['complete', 'failed', 'cancelled'].includes(s.status);
+    cancellationRequested = !!s.cancellation_requested && !predictionTerminal;
+    if (predictionPaused || cancellationRequested) v.pause();
+    updatePredictionControls();
+    if (predictionTerminal) document.getElementById('check').disabled = s.status !== 'complete';
+    analysisFinished = !!s.analysis_complete || predictionTerminal;
+    if (
+      analysisFinished &&
+      gatePaused &&
+      !predictionPaused &&
+      !cancellationRequested &&
+      s.status !== 'cancelled' &&
+      s.status !== 'failed'
+    ) {
       gatePaused = false;
       v.play().catch(() => {});
     }
@@ -257,12 +384,24 @@ async function poll() {
     document.getElementById('progress-fill').style.width = percentage + '%';
     document.getElementById('progress').setAttribute('aria-valuenow', String(percentage));
     document.getElementById('status').textContent =
-      s.status === 'failed'
-        ? 'Detection failed: ' + s.error
-        : 'Playing · ' +
-          s.frames_processed +
-          ' frames analysed' +
-          (s.status === 'complete' ? ' · analysis complete' : '');
+      s.status === 'cancelled'
+        ? 'Prediction cancelled. Choose the video again to start a new prediction.'
+        : cancellationRequested
+          ? 'Cancelling prediction…'
+          : predictionPaused
+            ? 'Prediction paused · ' + s.frames_processed + ' frames analysed'
+            : s.status === 'failed'
+              ? 'Detection failed: ' + s.error
+              : 'Playing · ' +
+                s.frames_processed +
+                ' frames analysed' +
+                (s.status === 'complete' ? ' · analysis complete' : '');
+    if (s.status === 'cancelled' || s.status === 'failed') {
+      rememberJob(null);
+      frames = [];
+      v.pause();
+      document.getElementById('prediction-help').textContent = 'Job ended. Choose a video to start again.';
+    }
     if (s.status === 'complete' && !done) {
       done = true;
       let a = document.createElement('a');
@@ -305,11 +444,7 @@ function draw(mediaTime = v.currentTime) {
     } else hi = m - 1;
   }
   if (best >= 0 && mediaTime - frames[best].time < 0.3)
-    for (let d of frames[best].detections.length
-      ? frames[best].detections
-      : best > 0
-        ? frames[best - 1].detections
-        : []) {
+    for (let d of frames[best].detections) {
       let [x, y, x2, y2] = d.xyxy;
       if (clickedAt && firstOverlayMs === null) firstOverlayMs = performance.now() - clickedAt;
       let color = d.class === 'fire' ? '#ff4238' : '#ffb02e';
@@ -329,3 +464,9 @@ function draw(mediaTime = v.currentTime) {
   else requestAnimationFrame(() => draw(v.currentTime));
 }
 draw();
+
+window.addEventListener('pagehide', () => {
+  preparationAbort?.abort();
+  v.pause();
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+});

@@ -11,7 +11,10 @@ let running = false,
   lastDetect = 0,
   debug = new URLSearchParams(location.search).has('debug');
 $('#debug').hidden = !debug;
-const cameraSession = crypto.randomUUID();
+let cameraSession = crypto.randomUUID(),
+  generation = 0,
+  lastResult = 0,
+  starting = false;
 async function cooldownRequest(method = 'GET', suffix = '', minutes) {
   const response = await fetch('/live-camera/cooldown' + suffix, {
     method,
@@ -73,8 +76,9 @@ function fit() {
   overlay.height = Math.round(r.height * d);
   ctx.setTransform(d, 0, 0, d, 0, 0);
 }
-function draw() {
-  if (!running) return;
+function draw(expectedGeneration = generation) {
+  if (!running || expectedGeneration !== generation) return;
+  if (performance.now() - lastResult > 1500) latest = [];
   fit();
   const r = video.getBoundingClientRect(),
     vw = video.videoWidth,
@@ -102,19 +106,22 @@ function draw() {
       null,
       2,
     );
-  video.requestVideoFrameCallback?.(() => draw()) || requestAnimationFrame(draw);
+  if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(() => draw(expectedGeneration));
+  else requestAnimationFrame(() => draw(expectedGeneration));
 }
-async function detect() {
-  if (!running || video.readyState < 2) {
-    setTimeout(detect, 120);
+async function detect(expectedGeneration = generation) {
+  if (!running || expectedGeneration !== generation) return;
+  if (video.readyState < 2) {
+    setTimeout(() => detect(expectedGeneration), 120);
     return;
   }
   const now = performance.now();
   if (now - lastDetect < 140) {
-    setTimeout(detect, 20);
+    setTimeout(() => detect(expectedGeneration), 20);
     return;
   }
   lastDetect = now;
+  const requestedGeneration = expectedGeneration;
   // Retain the exact source frame. Both detector copy and alert photo come from it.
   const full = document.createElement('canvas');
   full.width = video.videoWidth;
@@ -126,6 +133,7 @@ async function detect() {
   can.height = Math.max(1, Math.round(full.height * scale));
   can.getContext('2d').drawImage(full, 0, 0, can.width, can.height);
   const blob = await new Promise((ok) => can.toBlob(ok, 'image/jpeg', 0.88));
+  if (!running || expectedGeneration !== generation) return;
   try {
     const started = performance.now(),
       form = new FormData();
@@ -134,9 +142,12 @@ async function detect() {
       method: 'POST',
       headers: { 'X-Camera-Session': cameraSession },
       body: form,
+      signal: AbortSignal.timeout(10000),
     });
     const data = await r.json();
     if (!r.ok) throw Error(data.detail || 'Detector failed');
+    if (!running || requestedGeneration !== generation) return;
+    lastResult = performance.now();
     latest = sourceDetections(data, full.width, full.height);
     $('#detect').textContent =
       'Detection ' +
@@ -146,18 +157,25 @@ async function detect() {
       ' ms · ' +
       latest.length +
       ' boxes';
-    if (data.alert_id) await snapshot(data.alert_id, full);
+    if (data.alert_id) await snapshot(data.alert_id, full, expectedGeneration);
   } catch (e) {
+    if (!running || expectedGeneration !== generation) return;
     latest = [];
     $('#notice').textContent = 'Detection unavailable: ' + e.message;
   }
-  setTimeout(detect, 0);
+  setTimeout(() => detect(expectedGeneration), 0);
 }
-async function snapshot(alertId, full) {
+async function snapshot(alertId, full, expectedGeneration) {
   const blob = await new Promise((ok) => full.toBlob(ok, 'image/jpeg', 0.94));
+  if (!running || expectedGeneration !== generation) return;
   const form = new FormData();
   form.append('image', blob, 'live-camera-full.jpg');
-  const r = await fetch('/live-camera/alert/' + alertId, { method: 'POST', body: form });
+  const r = await fetch('/live-camera/alert/' + alertId, {
+    method: 'POST',
+    body: form,
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!running || expectedGeneration !== generation) return;
   if (r.ok) {
     sent++;
     $('#notice').textContent = 'Full-resolution alert photo queued for Telegram.';
@@ -165,32 +183,53 @@ async function snapshot(alertId, full) {
     $('#notice').textContent = 'Alert photo could not be queued.';
   }
 }
-async function status() {
+async function status(expectedGeneration = generation) {
+  if (!running || expectedGeneration !== generation) return;
   if (running)
     try {
-      const data = await fetch('/live-camera/status').then((r) => r.json());
+      const data = await fetch('/live-camera/status', { signal: AbortSignal.timeout(10000) }).then((r) => r.json());
+      if (!running || expectedGeneration !== generation) return;
       $('#alert').textContent = 'Alerts ' + data.delivered + ' delivered · ' + data.failed + ' failed';
       if (data.last_error) $('#notice').textContent = data.last_error;
     } catch {}
-  setTimeout(status, 1000);
+  setTimeout(() => status(expectedGeneration), 1000);
 }
 $('#start').onclick = async () => {
+  if (running) {
+    stopCamera();
+    return;
+  }
+  if (starting) return;
+  starting = true;
+  const startGeneration = generation;
+  $('#start').disabled = true;
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
       audio: false,
     });
+    if (startGeneration !== generation) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
     video.srcObject = stream;
     await video.play();
     running = true;
+    generation++;
+    cameraSession = crypto.randomUUID();
+    stream.getVideoTracks()[0].onended = stopCamera;
     const set = stream.getVideoTracks()[0].getSettings();
     $('#track').textContent = 'Negotiated ' + set.width + '×' + set.height + ' @ ' + (set.frameRate || '?') + ' fps';
-    $('#start').disabled = true;
+    $('#start').textContent = 'Stop camera';
     draw();
     detect();
     status();
   } catch (e) {
+    stopCamera();
     $('#notice').textContent = 'Camera permission or start failed: ' + e.name;
+  } finally {
+    starting = false;
+    $('#start').disabled = false;
   }
 };
 const cameraStage = document.querySelector('.stage'),
@@ -214,3 +253,16 @@ document.addEventListener('fullscreenchange', () => {
   fullscreenButton.textContent = document.fullscreenElement ? 'Exit fullscreen' : 'Fullscreen';
   fit();
 });
+
+function stopCamera() {
+  running = false;
+  generation++;
+  latest = [];
+  video.srcObject?.getTracks().forEach((track) => track.stop());
+  video.srcObject = null;
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  $('#start').textContent = 'Start camera';
+  $('#track').textContent = 'Camera stopped';
+  $('#detect').textContent = 'Detection waiting';
+}
+window.addEventListener('pagehide', stopCamera);

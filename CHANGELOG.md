@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Video controls and storage cleanup — 2026-11-03
+
+- Add Pause/Resume prediction and Cancel prediction controls, separate from playback controls.
+- Pause analysis/export cooperatively and wake paused workers on cancellation.
+- Add a confirmed Storage & cleanup panel for terminal video results, snapshots/history and provider caches.
+- Protect active jobs/downloads, discard queued old photos, and preserve credentials/settings/model/data assets.
+- Cover the controls with Chromium checks, browser-controller tests, pipeline tests and Streamlit AppTest.
+
+## Engineering hardening — 2026-11-02
+
+- Reserve video admission before upload/preparation; protect active jobs and downloads during retention.
+- Protect sensitive reads and add expiring HttpOnly browser sessions for native media clients.
+- Bound camera sessions, queue byte reservations and retained video jobs; add cancellation and deadlines.
+- Coordinate Telegram sends/reset, rearm camera persistence, redact HTTP errors and classify retries.
+- Validate media/settings, preserve image orientation, reject invalid boxes and correct satellite cache keys.
+- Pin a patched CPU model dependency pair; add constrained installs and CI advisory/syntax checks.
+- See [engineering verification and remaining limits](docs/HARDENING_REPORT.md).
+
 ## [Unreleased]
 
 ### Added

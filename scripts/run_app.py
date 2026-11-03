@@ -14,6 +14,7 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 import psutil
+from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
 LOG_DIR = ROOT / "logs"
@@ -36,6 +37,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def validate_launch(args: argparse.Namespace) -> None:
+    if args.host not in {"127.0.0.1", "localhost", "::1"} and not args.stop:
+        if not os.getenv("MEDFIRE_API_TOKEN", "").strip():
+            raise ValueError("Remote binding requires MEDFIRE_API_TOKEN and an authenticated gateway for Streamlit.")
     if not 1 <= args.api_port <= 65535 or not 1 <= args.dashboard_port <= 65535:
         raise ValueError("Service ports must be between 1 and 65535.")
     if args.api_port == args.dashboard_port:
@@ -249,6 +253,7 @@ def stop_process(process: subprocess.Popen[bytes] | None) -> None:
 
 
 def main() -> None:
+    load_dotenv(ROOT / ".env", override=False, encoding="utf-8-sig")
     args = parse_args()
     validate_launch(args)
     if args.fast_dev:

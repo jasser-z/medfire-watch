@@ -78,11 +78,16 @@ def test_per_session_camera_trackers():
     assert trk_a is not trk_b
 
 
-def test_camera_queue_memory_budget_bounded(monkeypatch: pytest.MonkeyPatch):
+def test_camera_queue_memory_budget_bounded(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    from alerts.manager import AlertManager
+
+    manager = AlertManager(state_path=tmp_path / "state.json")
+    monkeypatch.setattr(AlertManager, "from_config", lambda path: manager)
     monitor = BrowserCameraMonitor()
     # Add a pending alert item
     detection = {"class": "fire", "confidence": 0.9, "xyxy": [10, 10, 50, 50]}
     monitor._pending["alert1"] = {
+        "expires": float("inf"),
         "detections": [detection],
         "alert": {"detection": detection},
         "image_width": 640,
