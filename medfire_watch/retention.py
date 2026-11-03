@@ -19,6 +19,8 @@ def get_video_ttl_hours() -> float:
 def sweep_video_results(
     video_dir: Path | None = None,
     ttl_hours: float | None = None,
+    *,
+    force: bool = False,
 ) -> int:
     """Expire terminal jobs by completion time; never unlink active-worker artifacts.
 
@@ -53,7 +55,7 @@ def sweep_video_results(
             try:
                 newest = max((p.stat().st_mtime for p in paths), default=time.time())
                 finished = status.setdefault("finished_at", status.get("created_at", newest))
-                if finished >= cutoff:
+                if not force and finished >= cutoff:
                     continue
                 for path in paths:
                     path.unlink(missing_ok=True)
@@ -69,6 +71,7 @@ def sweep_video_results(
                 services.VIDEO_PREPARED_INPUTS,
                 services.VIDEO_SEEK_REQUESTS,
                 services.VIDEO_JOB_CANCEL_EVENTS,
+                services.VIDEO_JOB_PAUSE_EVENTS,
             ):
                 mapping.pop(job_id, None)
 

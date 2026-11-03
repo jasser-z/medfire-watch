@@ -229,3 +229,30 @@ Telegram photos; Live camera does.
 Install `requirements-dev.txt`, then `npm ci`. Run `ruff check .`, `pytest -q` and `npm test`.
 CI also reports Python and JavaScript coverage. `npm run format` formats browser assets.
 See [training](TRAINING.md), [deployment](DEPLOYMENT.md) and [demo](DEMO.md).
+
+
+## Pause, resume and cancel video prediction
+
+In **Test → Video studio**, use **Pause prediction** to suspend background analysis/export
+and keep the current progress. **Resume prediction** continues the same job. The separate
+Play/Pause button controls playback only. A frame/batch already in progress may finish before
+prediction pauses. Paused jobs keep their processing slot and remain protected from cleanup.
+
+**Cancel prediction** ends the job and releases resources once the current operation closes.
+It also works during upload. After cancellation, choose the video again to start a new job;
+use Pause when you want to resume. The current job is remembered in this browser tab so a
+dashboard refresh can reconnect to it. Selecting another file cancels the previous running job.
+
+## Clear generated data
+
+Open **Storage & cleanup** above the dashboard tabs. It shows generated-file size and active
+video jobs. Choose whether to include local camera snapshots/delivery history and downloaded
+satellite/weather caches, then select **Clear generated data… → Confirm cleanup**.
+
+Cleanup removes completed/failed/cancelled video inputs, exports and in-memory detection results.
+Running/paused jobs and active downloads are protected. Queued old snapshots are discarded when
+snapshot cleanup is selected. Model weights, datasets, geospatial catalogues, credentials, cooldown
+settings and application logs are retained. Messages already sent to Telegram remain there.
+
+Stop the live camera before cleanup if you want storage to stay empty. Map requests and new camera
+alerts can create new cache files. Busy provider downloads/files are skipped; retry after activity stops.

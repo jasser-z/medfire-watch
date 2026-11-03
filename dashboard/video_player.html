@@ -294,9 +294,15 @@
       </div>
       <canvas id="c"></canvas>
       <div id="controls">
-        <button id="play">Pause</button><input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek" />
-        <span id="time">0:00</span><button id="audio">Unmute</button><button id="fullscreen">Fullscreen</button>
+        <button id="play" title="Pause or play the video; prediction has separate controls">Play</button
+        ><input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek" /> <span id="time">0:00</span
+        ><button id="audio">Unmute</button><button id="fullscreen">Fullscreen</button>
       </div>
+    </div>
+    <div class="upload-actions" style="margin: 12px 0; flex-wrap: wrap" aria-label="Video prediction controls">
+      <button id="prediction-pause" disabled>Pause prediction</button>
+      <button id="prediction-cancel" disabled>Cancel prediction</button>
+      <span id="prediction-help" role="status">Pause keeps progress for Resume. Cancel ends the job.</span>
     </div>
     <div class="status-row">
       <span class="status-dot"></span>

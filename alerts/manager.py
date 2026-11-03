@@ -84,11 +84,11 @@ class AlertManager:
             raise OSError("Snapshot directory must not redirect outside its configured parent.")
         deleted = remaining = 0
         with self._history_lock:
-            attempts = sum(
-                len([line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()])
-                for path in (self.log_path, self.failure_log_path)
-                if path.exists()
-            )
+            attempts = 0
+            for path in (self.log_path, self.failure_log_path):
+                if path.exists():
+                    with path.open(encoding="utf-8") as handle:
+                        attempts += sum(1 for line in handle if line.strip())
             self.history_clear_path.parent.mkdir(parents=True, exist_ok=True)
             self.history_clear_path.write_text(
                 json.dumps(

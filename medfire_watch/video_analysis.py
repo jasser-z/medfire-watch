@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from medfire_watch.video_control import wait_for_video
 from medfire_watch.video_hardware import VideoReader
 
 
@@ -20,6 +21,7 @@ def analyse_video(
     priority: Callable | None = None,
     cancelled: threading.Event | None = None,
     max_duration_seconds: float = 600,
+    paused: threading.Event | None = None,
 ) -> dict:
     """Publish batch predictions with seek priority and full backfill."""
     if batch_size < 1:
@@ -33,6 +35,7 @@ def analyse_video(
 
     def infer(indexed: list[tuple[int, Any]], source: VideoReader) -> None:
         """Infer missing frames and scale boxes to source resolution."""
+        wait_for_video(paused, cancelled)
         pending = [(i, image) for i, image in indexed if i not in results]
         images = [image for _, image in pending]
         if not images:
@@ -57,6 +60,8 @@ def analyse_video(
         index = len(initial_results or [])
         try:
             while not stopped.is_set():
+                if not wait_for_video(paused, cancelled, stopped):
+                    break
                 images = []
                 for _ in range(batch_size):
                     ok, frame = reader.read()
@@ -94,6 +99,9 @@ def analyse_video(
         worker.start()
         decode_deadline = time.monotonic() + 30
         while True:
+            wait_started = time.monotonic()
+            wait_for_video(paused, cancelled)
+            decode_deadline += time.monotonic() - wait_started
             if cancelled is not None and cancelled.is_set():
                 raise RuntimeError("Video job cancelled.")
             target = priority() if priority else None
@@ -114,6 +122,7 @@ def analyse_video(
                                 break
                     finally:
                         seeker.close()
+                decode_deadline = time.monotonic() + 30
             try:
                 images = decoded.get(timeout=0.5)
             except queue.Empty:
@@ -128,6 +137,7 @@ def analyse_video(
             if not images:
                 break
             infer(images, reader)
+            decode_deadline = time.monotonic() + 30
         elapsed = time.perf_counter() - started
         if not results:
             raise ValueError("Video contains no decodable frames.")

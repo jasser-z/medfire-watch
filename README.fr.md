@@ -18,6 +18,7 @@ MedFire Watch : détection des feux de forêt et de la fumée avec YOLOv8, point
 - Détecter le feu et la fumée par caméra et mettre en file des photos Telegram après détections persistantes.
 - Analyser des images et lire les vidéos avec boîtes alignées, chronologie des détections et priorité de recherche.
 - Consulter l'historique d'envoi et télécharger les vidéos annotées à leur résolution source.
+- Suspendre/reprendre ou annuler la prédiction vidéo ; supprimer les données générées via **Storage & cleanup**.
 - Gérer la détection Telegram à côté de Supprimer tout dans Alerts ; modifier ou réinitialiser le délai depuis Live camera.
 
 ## Démarrage rapide

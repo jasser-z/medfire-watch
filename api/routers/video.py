@@ -22,6 +22,7 @@ from api.services import (
     VIDEO_FRAME_DETECTIONS,
     VIDEO_JOB_CANCEL_EVENTS,
     VIDEO_JOB_LOCK,
+    VIDEO_JOB_PAUSE_EVENTS,
     VIDEO_JOB_STATUS,
     VIDEO_PREPARED_INPUTS,
     VIDEO_RESULT_DIR,
@@ -91,6 +92,7 @@ def _discard_video_job(video_id: str) -> None:
             VIDEO_PREPARED_INPUTS,
             VIDEO_SEEK_REQUESTS,
             VIDEO_JOB_CANCEL_EVENTS,
+            VIDEO_JOB_PAUSE_EVENTS,
         ):
             mapping.pop(video_id, None)
 
@@ -246,12 +248,13 @@ async def _save_video_upload(video: UploadFile, service: DetectionService) -> tu
 
 @router.post("/video-inputs")
 async def prepare_video_input(
+    request: Request,
     video: UploadFile = File(...),
     service: DetectionService = Depends(get_detection_service),
 ) -> dict[str, Any]:
     """Save a multipart video and prepare its first predictions."""
     video_id, input_path = await _save_video_upload(video, service)
-    return await _prepare_saved_video(video_id, input_path, service)
+    return await _prepare_saved_video(video_id, input_path, service, request=request)
 
 
 @router.post("/video-upload")
@@ -269,7 +272,7 @@ async def stream_video_upload(
         received = await _write_video_stream(path, request.stream(), service.max_video_upload_bytes)
         upload_seconds = time.perf_counter() - started
         await _run_video_thread(_validate_video_file, path, service)
-        prepared = await _prepare_saved_video(video_id, path, service)
+        prepared = await _prepare_saved_video(video_id, path, service, request=request)
         prepared.update({"upload_seconds": upload_seconds, "upload_bytes": received})
         return prepared
     except BaseException:
@@ -277,7 +280,9 @@ async def stream_video_upload(
         raise
 
 
-async def _prepare_saved_video(video_id: str, input_path: Path, service: DetectionService) -> dict[str, Any]:
+async def _prepare_saved_video(
+    video_id: str, input_path: Path, service: DetectionService, request: Request | None = None
+) -> dict[str, Any]:
     import time
 
     from medfire_watch.video_hardware import VideoReader, encoder_arguments
@@ -341,6 +346,11 @@ async def _prepare_saved_video(video_id: str, input_path: Path, service: Detecti
 
     try:
         prepared = await _run_video_thread(prepare)
+        if request is not None and await request.is_disconnected():
+            raise HTTPException(400, "Video preparation cancelled after the upload disconnected.")
+    except HTTPException:
+        _discard_video_job(video_id)
+        raise
     except Exception:
         logger.exception("Video preparation failed for %s.", video_id)
         _discard_video_job(video_id)
@@ -387,6 +397,7 @@ def _launch_video_job(
             "created_at": (existing or {}).get("created_at", time.time()),
         }
         cancel = VIDEO_JOB_CANCEL_EVENTS.setdefault(video_id, threading.Event())
+        paused = VIDEO_JOB_PAUSE_EVENTS.setdefault(video_id, threading.Event())
         VIDEO_SOURCE_PATHS[video_id] = input_path
         VIDEO_FRAME_DETECTIONS[video_id] = []
 
@@ -425,6 +436,7 @@ def _launch_video_job(
                 initial_results=VIDEO_PREPARED_INPUTS.get(video_id, {}).get("initial_results"),
                 priority=take_priority,
                 cancelled=cancel,
+                paused=paused,
                 max_duration_seconds=service.max_video_duration_seconds,
             )
             with VIDEO_JOB_LOCK:
@@ -447,6 +459,7 @@ def _launch_video_job(
                 infer_batch=getattr(service, "predict_batch", None),
                 initial_results=analysis["results"],
                 cancelled=cancel,
+                paused=paused,
             ):
                 if event["type"] == "progress":
                     with VIDEO_JOB_LOCK:
@@ -501,7 +514,8 @@ def _launch_video_job(
                         logger.warning("Deferred source cleanup for video job %s.", video_id)
                 if video_id in VIDEO_PREPARED_INPUTS:
                     VIDEO_PREPARED_INPUTS[video_id].pop("initial_results", None)
-                status_info.update(worker_active=False, finished_at=time.time())
+                paused.clear()
+                status_info.update(worker_active=False, paused=False, finished_at=time.time())
 
     try:
         threading.Thread(target=run_job, name=f"video-job-{video_id[:8]}", daemon=True).start()
@@ -574,4 +588,33 @@ def cancel_video_job(video_id: str) -> dict[str, bool]:
         event = VIDEO_JOB_CANCEL_EVENTS.get(video_id)
         if event:
             event.set()
+        VIDEO_JOB_STATUS[video_id]["cancellation_requested"] = True
+        paused = VIDEO_JOB_PAUSE_EVENTS.get(video_id)
+        if paused:
+            paused.clear()
     return {"cancellation_requested": True}
+
+
+def _set_video_paused(video_id: str, pause: bool) -> dict[str, bool]:
+    with VIDEO_JOB_LOCK:
+        state = VIDEO_JOB_STATUS.get(video_id)
+        if state is None:
+            raise HTTPException(404, "Video job unavailable.")
+        if state.get("status") not in {"queued", "processing", "exporting"} or state.get("cancellation_requested"):
+            raise HTTPException(409, "This video job is no longer running.")
+        event = VIDEO_JOB_PAUSE_EVENTS.setdefault(video_id, threading.Event())
+        event.set() if pause else event.clear()
+        state["paused"] = pause
+    return {"paused": pause}
+
+
+@router.post("/video-jobs/{video_id}/pause")
+def pause_video_job(video_id: str) -> dict[str, bool]:
+    """Pause computation at the next frame/batch boundary, retaining progress."""
+    return _set_video_paused(video_id, True)
+
+
+@router.post("/video-jobs/{video_id}/resume")
+def resume_video_job(video_id: str) -> dict[str, bool]:
+    """Resume the same analysis/export worker without repeating completed work."""
+    return _set_video_paused(video_id, False)

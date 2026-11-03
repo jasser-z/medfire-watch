@@ -29,6 +29,7 @@ def jobs(monkeypatch, tmp_path):
         "VIDEO_PREPARED_INPUTS",
         "VIDEO_SEEK_REQUESTS",
         "VIDEO_JOB_CANCEL_EVENTS",
+        "VIDEO_JOB_PAUSE_EVENTS",
         "VIDEO_DOWNLOAD_LEASES",
     ):
         mapping = {}

@@ -117,3 +117,19 @@ Check `/health`, `/world-map/data` and `/fire-weather/metadata`. Credentials,
 network access and source availability determine map coverage. Windows timezone support
 uses the included `tzdata` dependency. Browser, GPU and camera acceptance must run on the
 target device; see [guide](GUIDE.md).
+
+
+## Manual storage cleanup and video pause
+
+`POST /video-jobs/{id}/pause` and `/resume` suspend and resume computation at frame/batch
+boundaries. The existing `/cancel` ends the job. Paused jobs retain admission capacity and
+remain active for retention. Cancellation wakes paused workers and closes media resources.
+
+`GET /runtime-cache` reports generated disk files and active-job counts. `DELETE /runtime-cache`
+removes terminal video groups (including cached detections), optionally clearing local snapshot
+history/queued photos (`include_snapshots`, default true) and provider caches
+(`include_provider_cache`, default true). These routes use the existing operator authentication.
+Running/paused video jobs and active downloads are protected. Provider refreshes or sharing
+violations can leave busy files for a later retry. Caches may refill as the app continues running.
+The Streamlit **Storage & cleanup** panel adds a confirmation before deletion and clears its
+server-side data cache afterwards. It preserves model/data artifacts, settings and diagnostic logs.

@@ -226,19 +226,34 @@ class BrowserCameraMonitor:
         """Return the current configuration and delivery status."""
         return {"delivered": self.delivery_count, "failed": self.failure_count, "last_error": self.last_error}
 
+    def clear_snapshots(self, manager: AlertManager) -> dict[str, int]:
+        """Discard queued photos and clear saved history without rearming live tracks."""
+        with self._lock:
+            self._generation += 1
+            self._pending.clear()
+            while True:
+                try:
+                    image, _, _ = self._queue.get_nowait()
+                except queue.Empty:
+                    break
+                self._queued_bytes = max(0, self._queued_bytes - image.nbytes)
+                self._queue.task_done()
+            return manager.clear_history(PROJECT_ROOT / "runs" / "webcam_alerts")
+
     def _send(self) -> None:
         while True:
             image, detections, alert = self._queue.get()
             with self._lock:
                 self._queued_bytes = max(0, self._queued_bytes - image.nbytes)
             try:
-                if alert.get("generation", self._generation) != self._generation:
-                    continue
-                folder = PROJECT_ROOT / "runs" / "webcam_alerts"
-                folder.mkdir(parents=True, exist_ok=True)
-                photo = folder / f"alert_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
-                if not cv2.imwrite(str(photo), draw_detections(image, detections)):
-                    raise OSError("Snapshot encode failed")
+                with self._lock:
+                    if alert.get("generation", self._generation) != self._generation:
+                        continue
+                    folder = PROJECT_ROOT / "runs" / "webcam_alerts"
+                    folder.mkdir(parents=True, exist_ok=True)
+                    photo = folder / f"alert_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+                    if not cv2.imwrite(str(photo), draw_detections(image, detections)):
+                        raise OSError("Snapshot encode failed")
                 detection = alert["detection"]
                 caption = (
                     f"Live camera · {datetime.now().astimezone().isoformat(timespec='seconds')} · "

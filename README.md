@@ -18,6 +18,7 @@ MedFire Watch: wildfire and smoke detection with YOLOv8, NASA satellite hotspots
 - Detect fire and smoke from a browser camera and queue annotated Telegram photos after persistent detections.
 - Inspect images and play original videos with aligned boxes, a detection timeline and seek prioritisation.
 - Review photo delivery attempts and download full-resolution annotated video exports.
+- Pause/resume or cancel video prediction; clear generated data from **Storage & cleanup**.
 - Manage Telegram detection beside Delete all in Alerts; edit or reset the camera cooldown from Live camera.
 
 ## Quick start

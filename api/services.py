@@ -33,6 +33,7 @@ VIDEO_FRAME_DETECTIONS: dict[str, list[dict[str, Any]]] = {}
 VIDEO_PREPARED_INPUTS: dict[str, dict[str, Any]] = {}
 VIDEO_SEEK_REQUESTS: dict[str, float] = {}
 VIDEO_JOB_CANCEL_EVENTS: dict[str, threading.Event] = {}
+VIDEO_JOB_PAUSE_EVENTS: dict[str, threading.Event] = {}
 VIDEO_DOWNLOAD_LEASES: dict[str, int] = {}
 logger = logging.getLogger(__name__)
 

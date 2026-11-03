@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 from medfire_watch.config import env_number, load_env
 
 from api import auth
-from api.routers import alerts, detection, map, video
+from api.routers import alerts, detection, map, storage, video
 from api.services import get_detection_service
 
 
@@ -178,5 +178,5 @@ async def api_guard_middleware(request: Request, call_next: Callable[[Request], 
     return response
 
 
-for router in (auth.router, map.router, detection.router, video.router, alerts.router):
+for router in (auth.router, map.router, detection.router, video.router, alerts.router, storage.router):
     app.include_router(router)

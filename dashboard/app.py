@@ -105,6 +105,7 @@ def api_request(method: str, path: str, **kwargs):
 
 
 debug_mode = str(st.query_params.get("debug", "")) == "1"
+storage_panel = st.container()
 pages = st.tabs(["Fire danger", "Live camera", "Alerts", "Test"])
 
 with pages[0]:
@@ -315,3 +316,57 @@ with pages[3]:
             ),
             language="json",
         )
+
+with storage_panel.expander("Storage & cleanup"):
+    st.write(
+        "Free disk space used by processed videos, detection results, local snapshots "
+        "and downloaded map/weather caches."
+    )
+    usage = api_request("GET", "/runtime-cache")
+    if usage:
+        stored = sum(group["bytes"] for group in usage["storage"].values())
+        files = sum(group["files"] for group in usage["storage"].values())
+        st.caption(
+            f"Generated files: {files:,} · {stored / 1024**2:.1f} MiB · active video jobs: {usage['active_video_jobs']}"
+        )
+    snapshots = st.checkbox(
+        "Include saved snapshots and local Telegram delivery history", value=True, key="clear_snapshots"
+    )
+    providers = st.checkbox("Include downloaded satellite and weather caches", value=True, key="clear_providers")
+    st.caption(
+        "Running/paused jobs and active downloads are protected. "
+        "Model files, datasets, credentials and settings are kept. "
+        "Telegram messages stay in Telegram. New camera alerts and map requests can create new files; "
+        "stop the live camera first if you want storage to stay empty."
+    )
+    if notice := st.session_state.pop("cache_cleanup_notice", None):
+        st.success(notice)
+    if st.button("Clear generated data…", key="clear_runtime_data", disabled=usage is None):
+        st.session_state.confirm_cache_cleanup = True
+    if st.session_state.get("confirm_cache_cleanup"):
+        st.warning("Permanently delete completed video results and the selected local data? This cannot be undone.")
+        confirm, keep = st.columns(2)
+        if confirm.button("Confirm cleanup", key="confirm_runtime_cleanup", type="primary"):
+            result = api_request(
+                "DELETE",
+                "/runtime-cache",
+                params={"include_snapshots": str(snapshots).lower(), "include_provider_cache": str(providers).lower()},
+            )
+            if result is not None:
+                st.cache_data.clear()
+                st.session_state.confirm_cache_cleanup = False
+                st.session_state.cache_cleanup_notice = (
+                    f"Removed {result['deleted_video_files']} video files, {result['deleted_snapshots']} snapshots, "
+                    f"{result['deleted_attempts']} history entries and "
+                    f"{result['deleted_provider_files']} provider cache files. "
+                    f"Protected {result['active_video_jobs']} active video jobs. "
+                    + (
+                        "Some busy files were kept; retry after activity stops."
+                        if result["busy_cache_entries"] or result["remaining_snapshots"]
+                        else ""
+                    )
+                )
+                st.rerun()
+        if keep.button("Keep data", key="keep_runtime_data"):
+            st.session_state.confirm_cache_cleanup = False
+            st.rerun()

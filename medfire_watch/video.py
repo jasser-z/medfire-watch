@@ -14,6 +14,7 @@ from typing import Any
 import numpy as np
 
 from medfire_watch.drawing import draw_detections
+from medfire_watch.video_control import wait_for_video
 from medfire_watch.video_hardware import VideoReader, encoder_arguments
 
 LOGGER = logging.getLogger(__name__)
@@ -65,17 +66,22 @@ class VideoFrameReader(threading.Thread):
         capture: VideoReader,
         frame_queue: queue.Queue[np.ndarray | None],
         stop_event: threading.Event,
+        paused: threading.Event | None = None,
+        cancelled: threading.Event | None = None,
     ) -> None:
         super().__init__(name="medfire-video-reader", daemon=True)
         self.capture = capture
         self.frame_queue = frame_queue
         self.stop_event = stop_event
+        self.paused, self.cancelled = paused, cancelled
         self.frames_decoded = 0
         self.errors: list[Exception] = []
 
     def run(self) -> None:
         try:
             while not self.stop_event.is_set():
+                if not wait_for_video(self.paused, self.cancelled, self.stop_event):
+                    break
                 success, frame = self.capture.read()
                 if not success:
                     break
@@ -251,12 +257,16 @@ def _fetch_frame_batch(
     batch_size: int,
     reader_is_alive: Callable[[], bool],
     cancelled: threading.Event | None = None,
+    paused: threading.Event | None = None,
 ) -> tuple[list[np.ndarray], bool]:
     """Retrieve a batch of frames from the frame queue."""
     frames: list[np.ndarray] = []
     reached_end = False
     deadline = time.monotonic() + 30
     while len(frames) < batch_size:
+        wait_started = time.monotonic()
+        wait_for_video(paused, cancelled)
+        deadline += time.monotonic() - wait_started
         if cancelled is not None and cancelled.is_set():
             raise RuntimeError("Video job cancelled.")
         try:
@@ -286,6 +296,7 @@ def iter_video_detections(
     batch_size: int = 8,
     initial_results: list[dict[str, Any]] | None = None,
     cancelled: threading.Event | None = None,
+    paused: threading.Event | None = None,
 ) -> Iterator[dict[str, Any]]:
     """Yield export progress and final frame-preserving video results."""
     if batch_size < 1:
@@ -322,7 +333,7 @@ def iter_video_detections(
     writer = VideoFrameEncoder(encoder, encode_queue)
     writer.start()
 
-    reader = VideoFrameReader(capture, frame_queue, stop_reader)
+    reader = VideoFrameReader(capture, frame_queue, stop_reader, paused, cancelled)
     reader.start()
 
     detector_device = "unknown"
@@ -332,9 +343,10 @@ def iter_video_detections(
 
     try:
         while True:
+            wait_for_video(paused, cancelled)
             if cancelled is not None and cancelled.is_set():
                 raise RuntimeError("Video job cancelled.")
-            frames, reached_end = _fetch_frame_batch(frame_queue, batch_size, reader.is_alive, cancelled)
+            frames, reached_end = _fetch_frame_batch(frame_queue, batch_size, reader.is_alive, cancelled, paused)
             if not frames and reached_end:
                 break
             cached = (initial_results or [])[frame_index : frame_index + len(frames)]
@@ -351,6 +363,7 @@ def iter_video_detections(
             if len(results) != len(frames):
                 raise RuntimeError("The batched detector returned a different number of results than input frames.")
             for frame, result in zip(frames, results):
+                wait_for_video(paused, cancelled)
                 if frame_index >= max(1, int(fps * max_duration_seconds)):
                     raise ValueError("Decoded video exceeds the configured duration limit.")
                 timestamp_seconds = frame_index / fps
