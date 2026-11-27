@@ -38,7 +38,7 @@ networkx==3.6.1
 numpy==2.4.6
 nvidia-ml-py==13.615.71
 opencv-python==5.0.0.93
-opentelemetry-api==1.45.1
+opentelemetry-api==1.45.2
 packaging==26.3
 pandas==3.1.0
 pi-heif==1.4.0
